@@ -14,7 +14,7 @@
 
 ## واجهة React البعيدة (OTA UI)
 
-رابط الواجهة اختياري ولا يوجد رابط Pages مُضمّن أو افتراضي في المستودع. عند ضبطه، يحاول Android تحميله أولاً عبر HTTPS؛ إذا فشل تحميل الصفحة الرئيسية فقط يعود إلى `appassets.androidplatform.net` المحلي المضمّن. أما الموارد الفرعية الفاشلة فلا تستبدل الصفحة، وتفتح روابط HTTP(S) خارج origin المضبوط في المتصفح الخارجي. يظل `file access` مغلقاً ويُستخدم `WebViewAssetLoader` للأصول المحلية.
+يُضمّن APK/AAB المنشور من GitHub Actions رابط Pages الافتراضي `https://zazo-brain-ui.pages.dev` (مع إمكانية تجاوزه بمتغير المستودع). أما البناء المحلي فيبقى بلا رابط بعيد ما لم تضبط `webUiUrl` أو `ZAZO_WEB_UI_URL`. عند ضبط الرابط، يحاول Android تحميله أولاً عبر HTTPS؛ إذا فشل تحميل الصفحة الرئيسية فقط يعود إلى `appassets.androidplatform.net` المحلي المضمّن. أما الموارد الفرعية الفاشلة فلا تستبدل الصفحة، وتفتح روابط HTTP(S) خارج origin المضبوط في المتصفح الخارجي. يظل `file access` مغلقاً ويُستخدم `WebViewAssetLoader` للأصول المحلية.
 
 اضبط **الرابط الفعلي لواجهة Pages** (وليس قيمة تجريبية أو placeholder) بإحدى الطريقتين التاليتين:
 
@@ -30,13 +30,13 @@ ZAZO_WEB_UI_URL="$PAGES_UI_URL" \
   ./android/gradlew -p android assembleDebug
 ```
 
-يقبل Gradle رابط HTTPS ذا hostname فقط، ويرفض HTTP والقيم غير الصالحة. إذا لم تُضبط `webUiUrl` أو `ZAZO_WEB_UI_URL` يبني التطبيق بنجاح ويستخدم الأصول المحلية فقط. في GitHub Actions عرّف متغير مستودع عاماً باسم `ZAZO_WEB_UI_URL` من **Settings → Secrets and variables → Actions → Variables**؛ سير العمل يمرره تلقائياً إلى بناء Android (لا حاجة إلى Secret للرابط العام). أولوية `-PwebUiUrl` أعلى من متغير البيئة.
+يقبل Gradle رابط HTTPS ذا hostname فقط، ويرفض HTTP والقيم غير الصالحة. إذا لم تُضبط `webUiUrl` أو `ZAZO_WEB_UI_URL` يبني التطبيق بنجاح ويستخدم الأصول المحلية فقط. سير إصدار Android يستخدم افتراضياً رابط Pages الحالي `https://zazo-brain-ui.pages.dev`، ويمكن تجاوزه بمتغير مستودع عام باسم `ZAZO_WEB_UI_URL` من **Settings → Secrets and variables → Actions → Variables** (لا حاجة إلى Secret للرابط العام). أولوية `-PwebUiUrl` أعلى من متغير البيئة.
 
 ### إعداد Cloudflare Pages
 
-أنشئ/اربط مشروع Pages من لوحة Cloudflare خارج هذا المستودع، واختر إعداد Vite التالي: أمر البناء `npm run build`، مجلد المخرجات `dist`، وNode.js 22. ملف `public/_headers` يطلب عدم تخزين `index.html` مؤقتاً، ويجعل ملفات `/assets/*` المشتملة على hash قابلة للتخزين لمدة طويلة مع `immutable`.
+مشروع Cloudflare Pages `zazo-brain-ui` منشور على `https://zazo-brain-ui.pages.dev` ومربوط بمستودع GitHub وفرع `main`. إعداد البناء هو `npm run build` ومجلد المخرجات `dist`. ملف `public/_headers` يمنع تخزين `index.html` مؤقتاً، ويجعل ملفات `/assets/*` المشتملة على hash قابلة للتخزين لمدة طويلة مع `immutable`. كل دفع إلى `main` يعيد نشر الواجهة تلقائياً.
 
-سير عمل Android الحالي **لا ينشئ مشروع Pages ولا ينشره**؛ هو يقرأ `ZAZO_WEB_UI_URL` فقط عند بناء APK/AAB. لذلك، إذا لم تستخدم Cloudflare Pages عبر Actions، فلابد من إعداد **Custom Pages Git integration** مع مستودع GitHub وفرع الإنتاج (عادة `main`) حتى تنشر Cloudflare تغييرات React تلقائياً. بعد أول نشر ناجح، ضع رابط Pages الفعلي في متغير المستودع ثم ابنِ إصدار Android جديداً ليستخدمه. لا تضع رابطاً متخيلاً في المتغير، وإلا سيعود التطبيق إلى fallback المحلي عند الفتح.
+واجهة التطبيق البعيدة تعمل عند فتح التطبيق أو إعادة تحميله بعد نشر تغييرات الواجهة؛ لا يلزم APK جديد لتغيير React/CSS/JS. أما تغييرات Kotlin أو صلاحيات Android فتتطلب إصدار APK جديداً. أول APK يحتوي على رابط Pages هو جسر التفعيل للأجهزة التي ما زالت على إصدار أقدم لا يعرف عنوان الواجهة البعيدة.
 
 ## نشر إصدار Android
 
