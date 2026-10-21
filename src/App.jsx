@@ -1,9 +1,11 @@
 import { useState, useEffect } from 'react'
 import ChatView from './components/ChatView'
 import KnowledgeView from './components/KnowledgeView'
+import AnalyticsView from './components/AnalyticsView'
 import {
   IconChat,
   IconBrain,
+  IconAnalytics,
   IconPlus,
   IconTrash,
   IconMenu,
@@ -109,6 +111,15 @@ export default function App() {
           >
             <IconBrain /> قاعدة المعرفة
           </button>
+          <button
+            className={`nav-item ${view === 'analytics' ? 'active' : ''}`}
+            onClick={() => {
+              setView('analytics')
+              setSidebarOpen(false)
+            }}
+          >
+            <IconAnalytics /> محرك التحليل
+          </button>
         </nav>
 
         <div className="sidebar-section-label">المحادثات</div>
@@ -161,8 +172,10 @@ export default function App() {
             conversation={activeConversation}
             onToast={showToast}
           />
-        ) : (
+        ) : view === 'knowledge' ? (
           <KnowledgeView onToast={showToast} />
+        ) : (
+          <AnalyticsView onToast={showToast} />
         )}
       </main>
 

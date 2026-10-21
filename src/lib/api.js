@@ -91,6 +91,15 @@ export async function deleteKnowledgeEntry(id) {
   if (error) throw error
 }
 
+export async function fetchAllMessages() {
+  const { data, error } = await supabase
+    .from('messages')
+    .select('*, conversations!inner(title)')
+    .order('created_at', { ascending: false })
+  if (error) throw error
+  return data
+}
+
 export function exportToJSONL(entries) {
   return entries
     .map((e) =>
