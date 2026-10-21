@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0a0e1a">
+  <title>تنزيلات Zazo Brain</title>
+  <style>
+    :root { color-scheme: dark; --bg:#0a0e1a; --panel:#111827; --border:#1e2a42; --text:#e8edf5; --muted:#94a3b8; --accent:#00d4aa; }
+    * { box-sizing:border-box; }
+    body { margin:0; min-height:100vh; background:radial-gradient(ellipse at top,#14243b 0,var(--bg) 55%); color:var(--text); font-family:system-ui,-apple-system,"Segoe UI",sans-serif; }
+    main { width:min(880px,calc(100% - 32px)); margin:0 auto; padding:64px 0; }
+    header { margin-bottom:28px; }
+    .mark { display:grid; place-items:center; width:54px; height:54px; border-radius:16px; color:var(--bg); background:linear-gradient(135deg,#00d4aa,#00a884); font-size:28px; font-weight:800; }
+    h1 { margin:18px 0 8px; font-size:clamp(28px,5vw,42px); }
+    p { color:var(--muted); line-height:1.8; }
+    .release { background:rgba(17,24,39,.92); border:1px solid var(--border); border-radius:16px; padding:22px; margin:16px 0; }
+    .release-head { display:flex; justify-content:space-between; align-items:start; gap:12px; flex-wrap:wrap; }
+    h2 { margin:0; font-size:20px; }
+    .date { color:var(--muted); font-size:13px; }
+    .tag { display:inline-block; margin-top:8px; color:var(--accent); font-size:13px; }
+    .actions { display:flex; flex-wrap:wrap; gap:10px; margin-top:18px; }
+    a.button { display:inline-flex; align-items:center; justify-content:center; gap:7px; padding:10px 15px; text-decoration:none; border-radius:9px; font-weight:700; }
+    .apk { color:#071611; background:var(--accent); }
+    .aab { color:var(--text); background:#1a2236; border:1px solid #2d3b56; }
+    .release-link { color:var(--muted); font-size:13px; align-self:center; }
+    .notice,.empty { padding:18px; border:1px solid var(--border); border-radius:12px; background:var(--panel); color:var(--muted); line-height:1.8; }
+    footer { margin-top:28px; color:var(--muted); font-size:13px; }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <div class="mark" aria-hidden="true">Z</div>
+      <h1>تنزيلات Zazo Brain</h1>
+      <p>اختر إصداراً من GitHub Releases. ملف APK مخصص للتثبيت المباشر على Android؛ وملف AAB مخصص للنشر عبر متاجر التطبيقات.</p>
+    </header>
+    <div class="notice">يستخدم التطبيق GitHub Releases للتحقق من التحديثات. يتطلب Android موافقتك على تثبيت كل تحديث. إذا كان المستودع خاصاً، يجب أن تكون مسجلاً في GitHub ومخوّلاً للوصول إلى ملفات الإصدار.</div>
+    <section id="releases" aria-live="polite"><div class="empty">جارٍ تحميل قائمة الإصدارات…</div></section>
+    <footer>يتم تنزيل الملفات مباشرةً من أصول إصدارات GitHub. تحقّق من صلاحية رابط الإصدار إذا طُلب منك تسجيل الدخول.</footer>
+  </main>
+  <script>
+    const list = document.querySelector('#releases')
+    const escapeText = (value) => String(value ?? '').replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))
+    fetch('./releases.json', { cache: 'no-store' })
+      .then((response) => { if (!response.ok) throw new Error('catalog'); return response.json() })
+      .then((releases) => {
+        if (!Array.isArray(releases) || releases.length === 0) {
+          list.innerHTML = '<div class="empty">لا توجد إصدارات منشورة بعد. ستظهر الملفات هنا بعد نشر أول إصدار من GitHub Actions.</div>'
+          return
+        }
+        list.innerHTML = releases.map((release) => {
+          const apk = release.assets.find((asset) => asset.type === 'apk')
+          const aab = release.assets.find((asset) => asset.type === 'aab')
+          const date = release.publishedAt ? new Date(release.publishedAt).toLocaleDateString('ar') : ''
+          const button = (asset, label, klass) => asset ? `<a class="button ${klass}" href="${escapeText(asset.url)}" rel="noopener">${label} · ${escapeText(asset.name)}</a>` : ''
+          return `<article class="release"><div class="release-head"><div><h2>${escapeText(release.name)}</h2><span class="tag">${escapeText(release.tag)}${release.prerelease ? ' · نسخة تجريبية' : ''}</span></div><span class="date">${escapeText(date)}</span></div><div class="actions">${button(apk, 'تنزيل APK', 'apk')}${button(aab, 'تنزيل AAB', 'aab')}<a class="release-link" href="${escapeText(release.releaseUrl)}" rel="noopener">صفحة الإصدار وملاحظاته</a></div></article>`
+        }).join('')
+      })
+      .catch(() => { list.innerHTML = '<div class="empty">تعذر تحميل فهرس الإصدارات. تأكد من نشر صفحة GitHub Pages ومن السماح بالوصول إليها.</div>' })
+  </script>
+</body>
+</html>

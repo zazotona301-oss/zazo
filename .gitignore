@@ -1,5 +1,13 @@
 node_modules/
+dist/
 .env
+android/.gradle/
+android/local.properties
+android/**/build/
+android/app/release*.jks
+android/app/*.keystore
+android/app/*.jks
+site/releases.json
 vite.config.js.timestamp-*.mjs
 vite.config.mjs.timestamp-*.mjs
 vite.config.cjs.timestamp-*.mjs
