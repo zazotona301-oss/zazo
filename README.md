@@ -14,7 +14,7 @@
 
 ## نشر إصدار Android
 
-سير العمل `.github/workflows/android-release.yml` ينطلق عند دفع وسم إصدار مثل `v1.2.3`، ويبني APK وAAB من واجهة React، يتحقق من التوقيع، ثم يرفعهما إلى GitHub Release وينشر فهرس التنزيلات على GitHub Pages. لتنفيذ أول إصدار:
+سير العمل `.github/workflows/android-release.yml` ينطلق عند نشر إصدار من [صفحة إنشاء GitHub Release](https://github.com/zazotona301-oss/zazo/releases/new)، ويبني APK وAAB من واجهة React، يتحقق من التوقيع، ثم يرفعهما إلى الإصدار نفسه وينشر فهرس التنزيلات على GitHub Pages. لتنفيذ أول إصدار:
 
 1. في إعدادات المستودع افتح **Settings → Secrets and variables → Actions** وأضف الأسرار التالية:
    - `ANDROID_KEYSTORE_BASE64`: محتوى ملف Java keystore بترميز Base64 أحادي السطر.
@@ -24,7 +24,7 @@
    - `VITE_SUPABASE_URL` و`VITE_SUPABASE_ANON_KEY`: قيم عميل Supabase العامة، عند الرغبة في تشغيل وظائف البيانات.
 2. أنشئ keystore بنفسك واحفظ نسخة احتياطية آمنة خارج GitHub. مثال إنشاء مفتاح JKS: `keytool -genkeypair -v -storetype JKS -keystore zazo-release.jks -alias zazo-release -keyalg RSA -keysize 3072 -validity 10000`. لا ترفع keystore أو كلمات مروره إلى Git أو Issues. يمكن تحويل الملف إلى Base64 محلياً بـ `base64 -w 0 zazo-release.jks` (أو `base64 zazo-release.jks` على macOS) ثم وضع الناتج في السر المذكور. فقد المفتاح يمنع توقيع تحديثات قابلة للتثبيت فوق النسخة المنشورة.
 3. من **Settings → Pages** اختر **GitHub Actions** كمصدر البناء والنشر. أول نشر يحتاج تفعيل GitHub Pages للمستودع.
-4. أنشئ وادفع الوسم: `git tag v1.0.0 && git push origin v1.0.0`، ثم غيّر رقم الإصدار عند النشر التالي.
+4. افتح [إنشاء إصدار جديد](https://github.com/zazotona301-oss/zazo/releases/new)، اختر أو أنشئ وسماً مثل `v1.0.0` واجعل الهدف `main`، ثم اضغط **Publish release**. بعد النشر، يبدأ GitHub Actions تلقائياً ويضيف APK وAAB و`SHA256SUMS.txt` إلى صفحة الإصدار ذاتها. استخدم وسماً جديداً بصيغة `vX.Y.Z` لكل إصدار لاحق.
 
 أسماء أسرار Supabase هنا قيم عميل فقط؛ المفتاح الذي يضمّن في تطبيق Android سيكون متاحاً لمستخدم التطبيق. لا تستخدم أبداً مفتاح Supabase من نوع `service_role` في تطبيق أو متغيرات Vite.
 

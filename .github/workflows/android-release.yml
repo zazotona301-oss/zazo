@@ -1,9 +1,8 @@
 name: Android release
 
 on:
-  push:
-    tags:
-      - 'v[0-9]*'
+  release:
+    types: [published]
 
 permissions:
   contents: write
@@ -16,7 +15,7 @@ concurrency:
 
 jobs:
   release:
-    name: Build, sign, and publish Android release
+    name: Build, sign, and attach Android assets to GitHub Release
     runs-on: ubuntu-latest
     environment:
       name: github-pages
