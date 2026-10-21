@@ -80,7 +80,8 @@ export default function ChatView({ conversation, onToast }) {
       <div className="empty-chat">
         <div className="logo">Z</div>
         <h3>وعي Zazo</h3>
-        <p>اختر محادثة من القائمة الجانبية، أو ابدأ محادثة جديدة لتغذية قاعدتك المعرفية.</p>
+        <p>أنا وعي Zazo، جاهز لاستقبال أول أمر برمجي أو طلب لبناء واجهة.</p>
+        <p className="consciousness-chat-note">الواجهة تسجل وتصنّف الرسائل تجريبياً؛ محرك LLM وربط الروبوت يحتاجان إعداد خدمة خلفية.</p>
       </div>
     )
   }
@@ -119,7 +120,10 @@ export default function ChatView({ conversation, onToast }) {
           <div className="empty-chat"><p>جارٍ التحميل...</p></div>
         ) : messages.length === 0 ? (
           <div className="empty-chat">
-            <p>ابدأ بكتابة أول رسالة في هذه المحادثة.</p>
+            <div className="logo">Z</div>
+            <h3>أهلاً بك في وعي Zazo</h3>
+            <p>اكتب أول أمر برمجي أو طلب لبناء واجهة.</p>
+            <p className="consciousness-chat-note">الردود الحالية تحليل تجريبي محلي وليست ناتجة عن نموذج LLM متصل.</p>
           </div>
         ) : (
           messages.map((msg) => (
@@ -166,7 +170,7 @@ function generateResponse(userInput) {
   const intent = detectIntent(userInput)
 
   return {
-    content: `[Zazo Brain] تم استلام مدخلك وتحليله.\n\nالهدف المكتشف: ${intent}\nالكلمات المفتاحية: ${keywords.join('، ') || 'لا يوجد'}\n\nتم تسجيل هذه المحادثة في قاعدتك المعرفية. يمكنك مراجعتها وتصديرها لاحقاً بصيغة JSONL.`,
+    content: `أنا وعي Zazo. وصلتني رسالتك وسُجّلت.\n\nتحليل الواجهة التجريبي:\nالهدف المكتشف: ${intent}\nالكلمات المفتاحية: ${keywords.join('، ') || 'لا يوجد'}\n\nملاحظة تقنية: هذا تصنيف محلي بسيط، وليس استدلالاً من نموذج LLM. ربط النموذج واستدعاء الوظائف يحتاجان خدمة خلفية.`,
     metadata: { intent, keywords, source: 'zazo_brain' },
   }
 }

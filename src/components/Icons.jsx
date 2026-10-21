@@ -14,6 +14,16 @@ export function IconBrain({ size = 20 }) {
   )
 }
 
+export function IconCpu({ size = 20 }) {
+  return (
+    <svg className="nav-icon" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="6" y="6" width="12" height="12" rx="2" />
+      <path d="M9 2v4M15 2v4M9 18v4M15 18v4M2 9h4M2 15h4M18 9h4M18 15h4" />
+      <path d="M10 10h4v4h-4z" />
+    </svg>
+  )
+}
+
 export function IconPlus({ size = 18 }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">

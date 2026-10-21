@@ -2,9 +2,11 @@ import { useState, useEffect } from 'react'
 import ChatView from './components/ChatView'
 import KnowledgeView from './components/KnowledgeView'
 import AnalyticsView from './components/AnalyticsView'
+import ConsciousnessView from './components/ConsciousnessView'
 import {
   IconChat,
   IconBrain,
+  IconCpu,
   IconAnalytics,
   IconPlus,
   IconTrash,
@@ -94,6 +96,15 @@ export default function App() {
 
         <nav className="sidebar-nav">
           <button
+            className={`nav-item ${view === 'consciousness' ? 'active' : ''}`}
+            onClick={() => {
+              setView('consciousness')
+              setSidebarOpen(false)
+            }}
+          >
+            <IconCpu /> وعي Zazo
+          </button>
+          <button
             className={`nav-item ${view === 'chat' ? 'active' : ''}`}
             onClick={() => {
               setView('chat')
@@ -174,8 +185,10 @@ export default function App() {
           />
         ) : view === 'knowledge' ? (
           <KnowledgeView onToast={showToast} />
-        ) : (
+        ) : view === 'analytics' ? (
           <AnalyticsView onToast={showToast} />
+        ) : (
+          <ConsciousnessView onToast={showToast} />
         )}
       </main>
 
