@@ -1,6 +1,6 @@
 # Zazo Brain
 
-واجهة React/Vite عربية مع تطبيق Android أصلي صغير بلغة Kotlin يعرض الواجهة نفسها داخل WebView آمن باستخدام `WebViewAssetLoader`. يجري تضمين ناتج React داخل التطبيق وقت البناء، لذلك لا يعتمد تشغيل الواجهة على استضافة ويب خارجية. يحتاج اتصال Supabase إلى إعدادات المشروع الحالية.
+واجهة React/Vite عربية مع تطبيق Android أصلي صغير بلغة Kotlin يعرض الواجهة داخل WebView آمن باستخدام `WebViewAssetLoader`. يجري تضمين ناتج React داخل التطبيق وقت البناء كـ fallback محلي، ويمكن للإصدار الذي حُقن فيه رابط HTTPS صالح أن يبدأ من واجهة Cloudflare Pages البعيدة كي تصل تحديثات الواجهة دون إعادة تثبيت APK. يحتاج اتصال Supabase إلى إعدادات المشروع الحالية.
 
 ## بناء التطبيق محلياً
 
@@ -11,6 +11,32 @@
 ```
 
 ينتج APK التجربة في `android/app/build/outputs/apk/debug/app-debug.apk`. ولإنشاء إصدار محلي، وفّر متغيرات بيئة التوقيع الموضحة أدناه ثم شغّل `assembleRelease bundleRelease`.
+
+## واجهة React البعيدة (OTA UI)
+
+رابط الواجهة اختياري ولا يوجد رابط Pages مُضمّن أو افتراضي في المستودع. عند ضبطه، يحاول Android تحميله أولاً عبر HTTPS؛ إذا فشل تحميل الصفحة الرئيسية فقط يعود إلى `appassets.androidplatform.net` المحلي المضمّن. أما الموارد الفرعية الفاشلة فلا تستبدل الصفحة، وتفتح روابط HTTP(S) خارج origin المضبوط في المتصفح الخارجي. يظل `file access` مغلقاً ويُستخدم `WebViewAssetLoader` للأصول المحلية.
+
+اضبط **الرابط الفعلي لواجهة Pages** (وليس قيمة تجريبية أو placeholder) بإحدى الطريقتين التاليتين:
+
+```bash
+# عيّن هذه القيمة في بيئتك إلى رابط Pages الفعلي، ولا تحفظها في Git
+export PAGES_UI_URL
+
+# أولوية أعلى من متغير البيئة
+./android/gradlew -p android assembleDebug -PwebUiUrl="$PAGES_UI_URL"
+
+# بديل محلي/في CI؛ لا تُحفظ القيمة في المصدر
+ZAZO_WEB_UI_URL="$PAGES_UI_URL" \
+  ./android/gradlew -p android assembleDebug
+```
+
+يقبل Gradle رابط HTTPS ذا hostname فقط، ويرفض HTTP والقيم غير الصالحة. إذا لم تُضبط `webUiUrl` أو `ZAZO_WEB_UI_URL` يبني التطبيق بنجاح ويستخدم الأصول المحلية فقط. في GitHub Actions عرّف متغير مستودع عاماً باسم `ZAZO_WEB_UI_URL` من **Settings → Secrets and variables → Actions → Variables**؛ سير العمل يمرره تلقائياً إلى بناء Android (لا حاجة إلى Secret للرابط العام). أولوية `-PwebUiUrl` أعلى من متغير البيئة.
+
+### إعداد Cloudflare Pages
+
+أنشئ/اربط مشروع Pages من لوحة Cloudflare خارج هذا المستودع، واختر إعداد Vite التالي: أمر البناء `npm run build`، مجلد المخرجات `dist`، وNode.js 22. ملف `public/_headers` يطلب عدم تخزين `index.html` مؤقتاً، ويجعل ملفات `/assets/*` المشتملة على hash قابلة للتخزين لمدة طويلة مع `immutable`.
+
+سير عمل Android الحالي **لا ينشئ مشروع Pages ولا ينشره**؛ هو يقرأ `ZAZO_WEB_UI_URL` فقط عند بناء APK/AAB. لذلك، إذا لم تستخدم Cloudflare Pages عبر Actions، فلابد من إعداد **Custom Pages Git integration** مع مستودع GitHub وفرع الإنتاج (عادة `main`) حتى تنشر Cloudflare تغييرات React تلقائياً. بعد أول نشر ناجح، ضع رابط Pages الفعلي في متغير المستودع ثم ابنِ إصدار Android جديداً ليستخدمه. لا تضع رابطاً متخيلاً في المتغير، وإلا سيعود التطبيق إلى fallback المحلي عند الفتح.
 
 ## نشر إصدار Android
 

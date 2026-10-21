@@ -105,6 +105,7 @@ jobs:
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+          ZAZO_WEB_UI_URL: ${{ vars.ZAZO_WEB_UI_URL }}
         run: |
           chmod +x android/gradlew
           ./android/gradlew --no-daemon -p android \

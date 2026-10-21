@@ -1,5 +1,6 @@
 import org.gradle.api.tasks.Exec
 import org.gradle.api.tasks.Sync
+import java.net.URI
 
 plugins {
     id("com.android.application")
@@ -8,6 +9,30 @@ plugins {
 
 val webRoot = rootProject.projectDir.parentFile
 val generatedWebAssets = layout.buildDirectory.dir("generated/reactAssets")
+val configuredWebUiUrl = providers.gradleProperty("webUiUrl")
+    .orElse(providers.environmentVariable("ZAZO_WEB_UI_URL"))
+    .orElse("")
+    .map(String::trim)
+    .get()
+
+fun normalizeWebUiUrl(rawUrl: String): String {
+    if (rawUrl.isEmpty()) return ""
+    val uri = try {
+        URI(rawUrl)
+    } catch (error: Exception) {
+        throw GradleException("webUiUrl must be a valid HTTPS URL", error)
+    }
+    if (!uri.scheme.equals("https", ignoreCase = true) ||
+        uri.host.isNullOrBlank() ||
+        uri.userInfo != null
+    ) {
+        throw GradleException("webUiUrl must be an HTTPS URL with a hostname and no credentials")
+    }
+    return rawUrl.trimEnd('/')
+}
+
+val webUiUrl = normalizeWebUiUrl(configuredWebUiUrl)
+val escapedWebUiUrl = webUiUrl.replace("\\", "\\\\").replace("\"", "\\\"")
 
 val installWebDependencies = tasks.register<Exec>("installWebDependencies") {
     group = "web"
@@ -26,6 +51,7 @@ val buildWebApp = tasks.register<Exec>("buildWebApp") {
     workingDir(webRoot)
     commandLine("npm", "run", "build")
     inputs.dir(webRoot.resolve("src"))
+    inputs.dir(webRoot.resolve("public"))
     inputs.file(webRoot.resolve("index.html"))
     inputs.file(webRoot.resolve("vite.config.js"))
     outputs.dir(webRoot.resolve("dist"))
@@ -53,6 +79,7 @@ android {
         targetSdk = 35
         versionCode = (providers.gradleProperty("versionCode").orNull ?: "1000000").toInt()
         versionName = providers.gradleProperty("versionName").orNull ?: "1.0.0"
+        buildConfigField("String", "WEB_UI_URL", "\"$escapedWebUiUrl\"")
     }
 
     sourceSets.getByName("main").assets.srcDir(generatedWebAssets)

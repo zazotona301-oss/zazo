@@ -11,6 +11,8 @@ import android.os.Looper
 import android.provider.Settings
 import android.view.ViewGroup
 import android.webkit.WebChromeClient
+import android.webkit.WebResourceError
+import android.webkit.WebResourceResponse
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
@@ -31,6 +33,9 @@ class MainActivity : ComponentActivity() {
     private lateinit var webView: WebView
     private val mainHandler = Handler(Looper.getMainLooper())
     private val executor = Executors.newSingleThreadExecutor()
+    private val remoteUiUrl = BuildConfig.WEB_UI_URL.takeIf { it.isNotBlank() }
+    private var remoteHomeLoadInProgress = false
+    private var localFallbackLoaded = false
     private var updateCheckStarted = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -52,6 +57,8 @@ class MainActivity : ComponentActivity() {
             settings.loadsImagesAutomatically = true
             settings.allowFileAccess = false
             settings.allowContentAccess = false
+            settings.allowFileAccessFromFileURLs = false
+            settings.allowUniversalAccessFromFileURLs = false
             settings.setSupportMultipleWindows(false)
             settings.textZoom = 100
             webChromeClient = WebChromeClient()
@@ -59,20 +66,26 @@ class MainActivity : ComponentActivity() {
                 override fun shouldInterceptRequest(
                     view: WebView?,
                     request: WebResourceRequest,
-                ) = assetLoader.shouldInterceptRequest(request.url)
+                ) = if (isLocalAssetUri(request.url)) {
+                    assetLoader.shouldInterceptRequest(request.url)
+                } else {
+                    null
+                }
 
                 override fun shouldOverrideUrlLoading(
                     view: WebView?,
                     request: WebResourceRequest,
                 ): Boolean {
                     val uri = request.url
-                    if (uri.host == "appassets.androidplatform.net") return false
-                    if (uri.scheme == "https" || uri.scheme == "http") {
+                    if (isLocalAssetUri(uri) || isConfiguredRemoteUri(uri)) return false
+                    if (uri.scheme.equals("https", ignoreCase = true) ||
+                        uri.scheme.equals("http", ignoreCase = true)
+                    ) {
                         return try {
                             startActivity(Intent(Intent.ACTION_VIEW, uri))
                             true
                         } catch (_: Exception) {
-                            false
+                            true
                         }
                     }
                     return true
@@ -80,15 +93,41 @@ class MainActivity : ComponentActivity() {
 
                 override fun onPageFinished(view: WebView?, url: String?) {
                     super.onPageFinished(view, url)
+                    if (url != null && isConfiguredRemoteUri(Uri.parse(url))) {
+                        remoteHomeLoadInProgress = false
+                    }
                     if (!updateCheckStarted) {
                         updateCheckStarted = true
                         checkForUpdate()
                     }
                 }
+
+                override fun onReceivedError(
+                    view: WebView?,
+                    request: WebResourceRequest?,
+                    error: WebResourceError?,
+                ) {
+                    super.onReceivedError(view, request, error)
+                    if (request?.isForMainFrame == true) fallbackToLocalAssets(view)
+                }
+
+                override fun onReceivedHttpError(
+                    view: WebView?,
+                    request: WebResourceRequest?,
+                    errorResponse: WebResourceResponse?,
+                ) {
+                    super.onReceivedHttpError(view, request, errorResponse)
+                    if (request?.isForMainFrame == true &&
+                        (errorResponse?.statusCode ?: 0) >= 400
+                    ) {
+                        fallbackToLocalAssets(view)
+                    }
+                }
             }
         }
         setContentView(webView)
-        webView.loadUrl("https://appassets.androidplatform.net/assets/index.html")
+        remoteHomeLoadInProgress = remoteUiUrl != null
+        webView.loadUrl(remoteUiUrl ?: LOCAL_UI_URL)
 
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
@@ -101,6 +140,32 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         resumePendingInstallIfAllowed()
+    }
+
+    private fun fallbackToLocalAssets(view: WebView?) {
+        if (!remoteHomeLoadInProgress || localFallbackLoaded) return
+        remoteHomeLoadInProgress = false
+        localFallbackLoaded = true
+        (view ?: webView).loadUrl(LOCAL_UI_URL)
+    }
+
+    private fun isLocalAssetUri(uri: Uri): Boolean =
+        uri.scheme.equals("https", ignoreCase = true) &&
+            uri.host.equals(LOCAL_ASSET_HOST, ignoreCase = true) &&
+            uri.path?.startsWith("/assets/") == true
+
+    private fun isConfiguredRemoteUri(uri: Uri): Boolean {
+        val configured = remoteUiUrl?.let(Uri::parse) ?: return false
+        return uri.scheme.equals(configured.scheme, ignoreCase = true) &&
+            uri.host.equals(configured.host, ignoreCase = true) &&
+            effectivePort(uri) == effectivePort(configured)
+    }
+
+    private fun effectivePort(uri: Uri): Int = when {
+        uri.port != -1 -> uri.port
+        uri.scheme.equals("https", ignoreCase = true) -> 443
+        uri.scheme.equals("http", ignoreCase = true) -> 80
+        else -> -1
     }
 
     private fun checkForUpdate() {
@@ -309,6 +374,8 @@ class MainActivity : ComponentActivity() {
     }
 
     companion object {
+        private const val LOCAL_ASSET_HOST = "appassets.androidplatform.net"
+        private const val LOCAL_UI_URL = "https://appassets.androidplatform.net/assets/index.html"
         private const val GITHUB_REPOSITORY = "zazotona301-oss/zazo"
         private const val RELEASES_URL = "https://github.com/zazotona301-oss/zazo/releases"
         private const val PREFERENCES = "zazo_update_state"
