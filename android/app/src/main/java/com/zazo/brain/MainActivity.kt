@@ -16,9 +16,12 @@ import android.webkit.WebResourceResponse
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.webkit.ValueCallback
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedCallback
+import androidx.activity.result.ActivityResultLauncher
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.FileProvider
 import androidx.webkit.WebViewAssetLoader
 import org.json.JSONObject
@@ -37,6 +40,14 @@ class MainActivity : ComponentActivity() {
     private var remoteHomeLoadInProgress = false
     private var localFallbackLoaded = false
     private var updateCheckStarted = false
+    private var filePathCallback: ValueCallback<Array<Uri>>? = null
+
+    private val filePickerLauncher: ActivityResultLauncher<Intent> = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        val callback = filePathCallback
+        filePathCallback = null
+        val uri = result.data?.data
+        callback?.onReceiveValue(uri?.let { arrayOf(it) })
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -56,12 +67,40 @@ class MainActivity : ComponentActivity() {
             settings.domStorageEnabled = true
             settings.loadsImagesAutomatically = true
             settings.allowFileAccess = false
-            settings.allowContentAccess = false
+            settings.allowContentAccess = true
             settings.allowFileAccessFromFileURLs = false
             settings.allowUniversalAccessFromFileURLs = false
             settings.setSupportMultipleWindows(false)
             settings.textZoom = 100
-            webChromeClient = WebChromeClient()
+            webChromeClient = object : WebChromeClient() {
+                override fun onShowFileChooser(
+                    view: WebView?,
+                    callback: ValueCallback<Array<Uri>>?,
+                    params: WebChromeClient.FileChooserParams?,
+                ): Boolean {
+                    filePathCallback?.onReceiveValue(null)
+                    filePathCallback = callback
+                    val intent = try {
+                        params?.createIntent() ?: Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                            addCategory(Intent.CATEGORY_OPENABLE)
+                            type = "*/*"
+                        }
+                    } catch (_: Exception) {
+                        Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                            addCategory(Intent.CATEGORY_OPENABLE)
+                            type = "*/*"
+                        }
+                    }
+                    return try {
+                        filePickerLauncher.launch(intent)
+                        true
+                    } catch (_: Exception) {
+                        filePathCallback?.onReceiveValue(null)
+                        filePathCallback = null
+                        false
+                    }
+                }
+            }
             webViewClient = object : WebViewClient() {
                 override fun shouldInterceptRequest(
                     view: WebView?,
