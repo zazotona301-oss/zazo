@@ -58,8 +58,10 @@ export default function App() {
       setActiveConversation(convo)
       setView('chat')
       setSidebarOpen(false)
+      return convo
     } catch {
       showToast('فشل إنشاء محادثة', true)
+      throw new Error('conversation creation failed')
     }
   }
 
@@ -182,6 +184,7 @@ export default function App() {
           <ChatView
             conversation={activeConversation}
             onToast={showToast}
+            onConversationCreated={handleNewConversation}
           />
         ) : view === 'knowledge' ? (
           <KnowledgeView onToast={showToast} />

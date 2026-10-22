@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { IconSend, IconMic } from './Icons'
 import { fetchMessages, addMessage, renameConversation, requestAssistantResponse } from '../lib/api'
 
-export default function ChatView({ conversation, onToast }) {
+export default function ChatView({ conversation, onToast, onConversationCreated }) {
   const [messages, setMessages] = useState([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(true)
@@ -15,7 +15,11 @@ export default function ChatView({ conversation, onToast }) {
   const recognitionRef = useRef(null)
 
   useEffect(() => {
-    if (!conversation) return
+    if (!conversation) {
+      setMessages([])
+      setLoading(false)
+      return
+    }
     setLoading(true)
     setMessages([])
     fetchMessages(conversation.id)
@@ -39,25 +43,27 @@ export default function ChatView({ conversation, onToast }) {
 
   async function handleSend() {
     const text = input.trim()
-    if (!text || !conversation || sending) return
+    if (!text || sending) return
     setInput('')
     if (textareaRef.current) textareaRef.current.style.height = 'auto'
     setSending(true)
     try {
-      const userMsg = await addMessage(conversation.id, 'user', text, { source: 'text' })
+      const activeConversation = conversation || await onConversationCreated?.()
+      if (!activeConversation) throw new Error('conversation creation failed')
+      const userMsg = await addMessage(activeConversation.id, 'user', text, { source: 'text' })
       const nextMessages = [...messages, userMsg]
       setMessages(nextMessages)
       let response
       try {
         response = await requestAssistantResponse({
-          conversationId: conversation.id,
+          conversationId: activeConversation.id,
           messages: nextMessages.map(({ role, content }) => ({ role, content })),
         })
       } catch {
         response = generateResponse(text)
         onToast('تم الحفظ؛ خدمة النموذج غير متاحة، استُخدم التحليل المحلي', true)
       }
-      const assistantMsg = await addMessage(conversation.id, 'assistant', response.content, response.metadata)
+      const assistantMsg = await addMessage(activeConversation.id, 'assistant', response.content, response.metadata)
       setMessages((prev) => [...prev, assistantMsg])
     } catch {
       onToast('تعذر حفظ الرسالة', true)
@@ -114,14 +120,10 @@ export default function ChatView({ conversation, onToast }) {
     }
   }
 
-  if (!conversation) {
-    return <div className="empty-chat"><div className="logo">Z</div><h3>وعي Zazo</h3><p>اكتب فكرة، ارفع معرفة، أو تحدث صوتياً ليبدأ Zazo في تنظيمها وتسجيلها.</p></div>
-  }
-
   return (
     <>
       <div className="main-header">
-        {editingTitle ? <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flex: 1 }}><input className="chat-input" style={{ flex: 1, minHeight: '40px', padding: '8px 12px' }} value={title} onChange={(e) => setTitle(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSaveTitle()} autoFocus /><button className="btn-primary" onClick={handleSaveTitle}>حفظ</button><button className="btn-secondary" onClick={() => setEditingTitle(false)}>إلغاء</button></div> : <h2 style={{ cursor: 'pointer' }} onClick={() => { setTitle(conversation.title); setEditingTitle(true) }}>{conversation.title}</h2>}
+        {editingTitle ? <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flex: 1 }}><input className="chat-input" style={{ flex: 1, minHeight: '40px', padding: '8px 12px' }} value={title} onChange={(e) => setTitle(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSaveTitle()} autoFocus /><button className="btn-primary" onClick={handleSaveTitle}>حفظ</button><button className="btn-secondary" onClick={() => setEditingTitle(false)}>إلغاء</button></div> : <h2 style={{ cursor: conversation ? 'pointer' : 'default' }} onClick={() => { if (conversation) { setTitle(conversation.title); setEditingTitle(true) } }}>{conversation?.title || 'محادثة جديدة'}</h2>}
       </div>
       <div className="chat-container">
         {loading ? <div className="empty-chat"><p>جارٍ التحميل...</p></div> : messages.length === 0 ? <div className="empty-chat"><div className="logo">Z</div><h3>أهلاً بك في وعي Zazo</h3><p>اكتب فكرتك أو اضغط زر الميكروفون للتحدث.</p></div> : messages.map((msg) => <div key={msg.id} className={`message ${msg.role}`}><div className="message-role">{msg.role === 'user' ? 'أنت' : 'Zazo'}</div>{msg.content}</div>)}
