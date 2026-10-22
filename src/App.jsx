@@ -5,7 +5,6 @@ import AnalyticsView from './components/AnalyticsView'
 import ConsciousnessView from './components/ConsciousnessView'
 import {
   IconChat,
-  IconBrain,
   IconCpu,
   IconAnalytics,
   IconPlus,
@@ -89,7 +88,7 @@ export default function App() {
 
       <aside className={`sidebar ${sidebarOpen ? 'open' : ''}`}>
         <div className="sidebar-header">
-          <div className="logo">Z</div>
+          <img className="logo logo-avatar" src="/assets/zazo-avatar.webp" alt="وجه Zazo" />
           <div className="logo-text">
             <h1>Zazo Brain</h1>
             <span>العقل المركزي</span>
@@ -122,7 +121,7 @@ export default function App() {
               setSidebarOpen(false)
             }}
           >
-            <IconBrain /> قاعدة المعرفة
+            <img className="nav-image" src="/assets/zazo-brain-icon.webp" alt="" aria-hidden="true" /> قاعدة المعرفة
           </button>
           <button
             className={`nav-item ${view === 'analytics' ? 'active' : ''}`}

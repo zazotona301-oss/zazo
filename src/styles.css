@@ -77,6 +77,12 @@ body {
   flex-shrink: 0;
 }
 
+.logo-avatar {
+  object-fit: cover;
+  border: 1px solid rgba(76, 224, 218, 0.45);
+  box-shadow: 0 0 18px rgba(76, 224, 218, 0.16);
+}
+
 .logo-text h1 {
   font-size: 18px;
   font-weight: 700;
@@ -126,6 +132,13 @@ body {
 .nav-icon {
   width: 20px;
   height: 20px;
+  flex-shrink: 0;
+}
+
+.nav-image {
+  width: 20px;
+  height: 20px;
+  object-fit: contain;
   flex-shrink: 0;
 }
 
@@ -353,6 +366,15 @@ body {
   width: 64px;
   height: 64px;
   font-size: 28px;
+}
+
+.empty-avatar {
+  width: 112px;
+  height: 112px;
+  object-fit: cover;
+  border-radius: 28px;
+  border: 1px solid rgba(76, 224, 218, 0.45);
+  box-shadow: 0 0 34px rgba(76, 224, 218, 0.18);
 }
 
 .empty-chat h3 {
