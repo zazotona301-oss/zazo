@@ -112,8 +112,8 @@ export default function KnowledgeView({ onToast }) {
       <button className="header-btn" onClick={() => downloadJSONL(entries)}><IconDownload /> تصدير JSONL</button>
       <button className="header-btn" onClick={() => fileRef.current?.click()}><IconUpload /> رفع كتاب / ملف</button>
       <button className="header-btn" onClick={() => audioRef.current?.click()} disabled={audioBusy}><IconMic /> {audioBusy ? 'جاري التفريغ...' : 'رفع صوت'}</button>
-      <input ref={fileRef} type="file" hidden accept=".pdf,.docx,.epub,.txt,.md,.markdown,.html,.htm,.json,.jsonl,.ndjson,.csv,.tsv" onChange={(e) => handleFile(e.target.files?.[0])} />
-      <input ref={audioRef} type="file" hidden accept="audio/*,.mp3,.wav,.m4a,.ogg,.webm,.mp4" onChange={(e) => handleFile(e.target.files?.[0])} />
+      <input ref={fileRef} className="native-file-input" type="file" accept=".pdf,.docx,.epub,.txt,.md,.markdown,.html,.htm,.json,.jsonl,.ndjson,.csv,.tsv" onClick={(e) => { e.currentTarget.value = '' }} onChange={(e) => handleFile(e.target.files?.[0])} />
+      <input ref={audioRef} className="native-file-input" type="file" accept="audio/*,.mp3,.wav,.m4a,.ogg,.webm,.mp4,.flac" onClick={(e) => { e.currentTarget.value = '' }} onChange={(e) => handleFile(e.target.files?.[0])} />
       <button className="header-btn" style={{ borderColor: 'var(--accent)', color: 'var(--accent)' }} onClick={() => setShowModal(true)}><IconPlus /> إدخال يدوي</button>
     </div></div>
     <div className="kb-container"><div className="kb-header"><div><p className="analyst-hint">يدعم PDF وDOCX وEPUB وHTML وJSON وCSV وMarkdown وTXT، مع تفريغ الملفات الصوتية إلى نص قبل الحفظ في العالم المختار.</p></div><div className="kb-stats"><div className="kb-stat"><strong>{entries.length}</strong> سجل</div><div className="kb-stat"><strong>{countUniqueTags(entries)}</strong> وسوم</div></div></div>

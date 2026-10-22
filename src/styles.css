@@ -1486,3 +1486,14 @@ body {
   .header-actions { flex-wrap: wrap; }
   .kb-header { align-items: flex-start; }
 }
+
+/* Keep file inputs in the WebView DOM: display:none/hidden can block Android's picker. */
+.native-file-input {
+  position: fixed;
+  width: 1px;
+  height: 1px;
+  opacity: 0.01;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: -1;
+}
