@@ -64,6 +64,15 @@ export async function addMessage(conversationId, role, content, metadata = {}) {
   return data
 }
 
+export async function requestAssistantResponse({ conversationId, messages, mode = 'chat' }) {
+  const { data, error } = await supabase.functions.invoke('zazo-chat', {
+    body: { conversation_id: conversationId, messages, mode },
+  })
+  if (error) throw error
+  if (!data?.content) throw new Error('Empty assistant response')
+  return data
+}
+
 export async function fetchKnowledgeEntries() {
   const { data, error } = await supabase
     .from('knowledge_entries')
@@ -79,6 +88,16 @@ export async function addKnowledgeEntry(entry) {
     .insert(entry)
     .select()
     .single()
+  if (error) throw error
+  return data
+}
+
+export async function addKnowledgeEntries(entries) {
+  if (!entries.length) return []
+  const { data, error } = await supabase
+    .from('knowledge_entries')
+    .insert(entries)
+    .select()
   if (error) throw error
   return data
 }
@@ -102,10 +121,11 @@ export async function fetchAllMessages() {
 
 export function exportToJSONL(entries) {
   return entries
+    .filter((e) => e.instruction?.trim() && e.response?.trim())
     .map((e) =>
       JSON.stringify({
         instruction: e.instruction,
-        context: e.context,
+        context: e.context || '',
         response: e.response,
         tags: e.tags || [],
       })

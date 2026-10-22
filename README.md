@@ -67,3 +67,25 @@ ZAZO_WEB_UI_URL="$PAGES_UI_URL" \
 ## الأسرار المطلوبة على GitHub
 
 لا يضع المستودع مفاتيح التوقيع أو بيانات Supabase داخل المصدر. إذا لم تضف الأسرار الأربعة `ANDROID_*` فسيرفض سير عمل الإصدارات إنتاج إصدار غير موقّع. إعداد Supabase اختياري للبناء لكنه مطلوب كي تتصل المحادثات وقاعدة المعرفة والتحليلات بقاعدة بيانات المشروع.
+
+
+## تشغيل مسار التدريب والربط الخلفي
+
+أضيف إلى المشروع مسار موحد لتجميع بيانات تدريب Zazo:
+
+- **المحادثة** تحفظ الرسائل في Supabase وتستدعي Edge Function باسم `zazo-chat` عند توفرها. إذا لم تكن الخدمة مهيأة، يظهر رد محلي احتياطي واضح بدلاً من فقد الرسالة.
+- **الإدخال الصوتي** يستخدم Web Speech API من زر الميكروفون داخل المحادثة، ثم يحفظ النص الناتج كمصدر `text`.
+- **محلل البيانات** يقبل `JSON`, `JSONL/NDJSON`, `CSV`, `TSV`, `Markdown` و`TXT`. يعرض معاينة قبل الحفظ ويحوّل الحقول الشائعة (`prompt/input/question` و`response/output/answer`) إلى `instruction/context/response`.
+- كل سجل مستورد يحمل `metadata` تتضمن اسم المصدر ورقم الصف وحالة `needs_review`. السجلات التي لا تحتوي استجابة لا تُفقد، لكنها تظهر كمحتوى يحتاج مراجعة قبل تصدير JSONL للتدريب.
+
+### تطبيق migration وتشغيل النموذج
+
+طبّق ملفات `supabase/migrations` على مشروع Supabase، ثم انشر الوظيفة:
+
+```bash
+supabase db push
+supabase functions deploy zazo-chat
+supabase secrets set OPENAI_API_KEY=... OPENAI_MODEL=gpt-4o-mini
+```
+
+لا تضع `OPENAI_API_KEY` في `VITE_*` أو داخل تطبيق Android. الواجهة تستخدم فقط `VITE_SUPABASE_URL` و`VITE_SUPABASE_ANON_KEY`، بينما مفتاح النموذج يبقى داخل Edge Function.
