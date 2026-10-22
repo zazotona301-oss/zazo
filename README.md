@@ -38,6 +38,8 @@ ZAZO_WEB_UI_URL="$PAGES_UI_URL" \
 
 واجهة التطبيق البعيدة تعمل عند فتح التطبيق أو إعادة تحميله بعد نشر تغييرات الواجهة؛ لا يلزم APK جديد لتغيير React/CSS/JS. أما تغييرات Kotlin أو صلاحيات Android فتتطلب إصدار APK جديداً. أول APK يحتوي على رابط Pages هو جسر التفعيل للأجهزة التي ما زالت على إصدار أقدم لا يعرف عنوان الواجهة البعيدة.
 
+أيقونة Zazo الخارجية على شاشة الهاتف معرفة داخل موارد Android (`mipmap/ic_launcher` و`ic_launcher_round`) وتحتاج إصدار APK/AAB جديداً حتى يستبدلها Android؛ تحديث OTA يغيّر الأيقونة داخل الواجهة فقط.
+
 ## نشر إصدار Android
 
 سير العمل `.github/workflows/android-release.yml` ينطلق عند نشر إصدار من [صفحة إنشاء GitHub Release](https://github.com/zazotona301-oss/zazo/releases/new)، ويبني APK وAAB من واجهة React، يتحقق من التوقيع، ثم يرفعهما إلى الإصدار نفسه وينشر فهرس التنزيلات على GitHub Pages. لتنفيذ أول إصدار:
