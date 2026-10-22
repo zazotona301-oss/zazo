@@ -1,4 +1,5 @@
 import { parseTrainingSource } from './dataParser'
+import pdfWorkerUrl from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs?url'
 
 export async function extractFileText(file) {
   const extension = file.name.toLowerCase().split('.').pop()
@@ -18,7 +19,8 @@ export async function extractBookRecords(file) {
 
 async function extractPdf(file) {
   const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs')
-  const document = await pdfjs.getDocument({ data: new Uint8Array(await file.arrayBuffer()), disableWorker: true }).promise
+  pdfjs.GlobalWorkerOptions.workerSrc = pdfWorkerUrl
+  const document = await pdfjs.getDocument({ data: new Uint8Array(await file.arrayBuffer()) }).promise
   const pages = []
   for (let pageNumber = 1; pageNumber <= document.numPages; pageNumber += 1) {
     const page = await document.getPage(pageNumber)
