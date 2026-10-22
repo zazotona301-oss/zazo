@@ -61,7 +61,7 @@ export default function ChatView({ conversation, onToast, onConversationCreated 
         })
       } catch {
         response = generateResponse(text)
-        onToast('تم الحفظ؛ خدمة النموذج غير متاحة، استُخدم التحليل المحلي', true)
+        onToast('تم حفظ الرسالة؛ خدمة النموذج غير متاحة، استُخدم الرد المحلي')
       }
       const assistantMsg = await addMessage(activeConversation.id, 'assistant', response.content, response.metadata)
       setMessages((prev) => [...prev, assistantMsg])
