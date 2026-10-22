@@ -1,41 +1,166 @@
+import {
+  countMutations,
+  createLocalId,
+  enqueueMutation,
+  listMutations,
+  readCache,
+  removeMutation,
+  writeCache,
+} from './offlineStore'
+
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || 'https://zazo-brain-backend.zazotona301.workers.dev').replace(/\/$/, '')
+const syncListeners = new Set()
+let syncRunning = false
+let syncState = { online: globalThis.navigator?.onLine ?? true, pending: 0, syncing: false }
 
 export function getApiBaseUrl() {
   return API_BASE_URL
 }
 
-async function request(path, options = {}) {
-  const response = await fetch(`${API_BASE_URL}${path}`, {
-    ...options,
-    headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
-  })
+export function getSyncState() {
+  return syncState
+}
+
+export function subscribeSyncStatus(listener) {
+  syncListeners.add(listener)
+  listener(syncState)
+  return () => syncListeners.delete(listener)
+}
+
+function publishSyncState(next) {
+  syncState = { ...syncState, ...next }
+  syncListeners.forEach((listener) => listener(syncState))
+  globalThis.dispatchEvent?.(new CustomEvent('zazo-sync-status', { detail: syncState }))
+}
+
+async function refreshPending() {
+  try { publishSyncState({ pending: await countMutations() }) } catch { /* IndexedDB unavailable */ }
+}
+
+async function sendNetwork(path, options = {}) {
+  let response
+  try {
+    response = await fetch(`${API_BASE_URL}${path}`, {
+      ...options,
+      headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
+    })
+  } catch (error) {
+    error.isNetworkError = true
+    throw error
+  }
   const payload = await response.json().catch(() => ({}))
-  if (!response.ok) throw new Error(payload.message || payload.error || `Backend request failed (${response.status})`)
+  if (!response.ok) {
+    const error = new Error(payload.message || payload.error || `Backend request failed (${response.status})`)
+    error.status = response.status
+    error.isNetworkError = false
+    throw error
+  }
   return payload
 }
 
-export async function fetchConversations() {
-  return request('/api/conversations?limit=100')
+async function cachedGet(path, options = {}) {
+  try {
+    const payload = await sendNetwork(path, options)
+    await writeCache(path, payload)
+    return payload
+  } catch (error) {
+    const cached = await readCache(path).catch(() => undefined)
+    if (cached !== undefined) return cached
+    throw error
+  }
+}
+
+async function queueMutation(path, body, optimistic) {
+  await enqueueMutation({ path, method: body ? 'POST' : 'DELETE', body: body ?? undefined })
+  await refreshPending()
+  publishSyncState({ syncing: false })
+  return optimistic
+}
+
+async function mutate(path, method, body, optimistic, cacheUpdate) {
+  try {
+    const result = await sendNetwork(path, { method, body: body ? JSON.stringify(body) : undefined })
+    if (cacheUpdate) await cacheUpdate(result)
+    return result
+  } catch (error) {
+    if (!(error.isNetworkError || globalThis.navigator?.onLine === false)) throw error
+    if (cacheUpdate) await cacheUpdate(optimistic)
+    return queueMutation(path, body ? { ...body, __method: method } : null, optimistic)
+  }
+}
+
+export async function flushOfflineQueue() {
+  if (syncRunning || globalThis.navigator?.onLine === false) return
+  syncRunning = true
+  publishSyncState({ online: true, syncing: true })
+  try {
+    const mutations = await listMutations()
+    for (const mutation of mutations) {
+      const method = mutation.body?.__method || mutation.method
+      const body = mutation.body ? { ...mutation.body } : undefined
+      if (body) delete body.__method
+      try {
+        await sendNetwork(mutation.path, { method, body: body ? JSON.stringify(body) : undefined })
+        await removeMutation(mutation.id)
+      } catch (error) {
+        if (error.isNetworkError) break
+        await removeMutation(mutation.id)
+      }
+    }
+  } finally {
+    syncRunning = false
+    await refreshPending()
+    publishSyncState({ syncing: false, online: globalThis.navigator?.onLine ?? true })
+  }
+}
+
+globalThis.addEventListener?.('online', () => {
+  publishSyncState({ online: true })
+  flushOfflineQueue()
+})
+globalThis.addEventListener?.('offline', () => publishSyncState({ online: false }))
+setTimeout(() => { refreshPending(); flushOfflineQueue() }, 0)
+setInterval(() => { if (globalThis.navigator?.onLine !== false) flushOfflineQueue() }, 30_000)
+
+export function fetchConversations() {
+  return cachedGet('/api/conversations?limit=100')
 }
 
 export async function createConversation(title = 'محادثة جديدة') {
-  return request('/api/conversations', { method: 'POST', body: JSON.stringify({ title }) })
+  const id = createLocalId()
+  const optimistic = { id, title, metadata: {}, created_at: new Date().toISOString(), updated_at: new Date().toISOString(), offline: true }
+  return mutate('/api/conversations', 'POST', { id, title }, optimistic, async (result) => {
+    const current = await readCache('/api/conversations?limit=100').catch(() => []) || []
+    await writeCache('/api/conversations?limit=100', [result, ...current.filter((item) => item.id !== result.id && item.id !== id)])
+  })
 }
 
 export async function deleteConversation(id) {
-  await request(`/api/conversations/${id}`, { method: 'DELETE' })
+  return mutate(`/api/conversations/${id}`, 'DELETE', null, { deleted: id, queued: true }, async () => {
+    const current = await readCache('/api/conversations?limit=100').catch(() => []) || []
+    await writeCache('/api/conversations?limit=100', current.filter((item) => item.id !== id))
+  })
 }
 
 export async function renameConversation(id, title) {
-  return request(`/api/conversations/${id}`, { method: 'PUT', body: JSON.stringify({ title }) })
+  return mutate(`/api/conversations/${id}`, 'PUT', { title }, { id, title, queued: true }, async (result) => {
+    const current = await readCache('/api/conversations?limit=100').catch(() => []) || []
+    await writeCache('/api/conversations?limit=100', current.map((item) => item.id === id ? { ...item, ...result, title } : item))
+  })
 }
 
-export async function fetchMessages(conversationId) {
-  return request(`/api/conversations/${conversationId}/messages?limit=100`)
+export function fetchMessages(conversationId) {
+  return cachedGet(`/api/conversations/${conversationId}/messages?limit=100`)
 }
 
 export async function addMessage(conversationId, role, content, metadata = {}) {
-  return request('/api/messages', { method: 'POST', body: JSON.stringify({ conversationId, role, content, metadata }) })
+  const id = createLocalId()
+  const optimistic = { id, conversation_id: conversationId, role, content, metadata, created_at: new Date().toISOString(), offline: true }
+  return mutate('/api/messages', 'POST', { id, conversationId, role, content, metadata }, optimistic, async (result) => {
+    const key = `/api/conversations/${conversationId}/messages?limit=100`
+    const current = await readCache(key).catch(() => []) || []
+    await writeCache(key, [...current.filter((item) => item.id !== id && item.id !== result.id), result])
+  })
 }
 
 export async function requestAssistantResponse() {
@@ -43,26 +168,36 @@ export async function requestAssistantResponse() {
 }
 
 export async function fetchKnowledgeEntries() {
-  const memories = await request('/api/memories?limit=100')
+  const memories = await cachedGet('/api/memories?limit=100')
   return memories.map(normalizeMemory)
 }
 
 export async function addKnowledgeEntry(entry) {
-  const memory = await request('/api/memories', { method: 'POST', body: JSON.stringify(toMemory(entry)) })
+  const id = createLocalId()
+  const memoryBody = { id, ...toMemory(entry) }
+  const optimistic = normalizeMemory({ id, ...memoryBody, created_at: new Date().toISOString(), offline: true })
+  const memory = await mutate('/api/memories', 'POST', memoryBody, optimistic, async (result) => {
+    const key = '/api/memories?limit=100'
+    const current = await readCache(key).catch(() => []) || []
+    await writeCache(key, [result, ...current.filter((item) => item.id !== id && item.id !== result.id)])
+  })
   return normalizeMemory(memory)
 }
 
 export async function addKnowledgeEntries(entries) {
-  const saved = await Promise.all(entries.map((entry) => addKnowledgeEntry(entry)))
-  return saved
+  return Promise.all(entries.map((entry) => addKnowledgeEntry(entry)))
 }
 
 export async function deleteKnowledgeEntry(id) {
-  await request(`/api/memories/${id}`, { method: 'DELETE' })
+  return mutate(`/api/memories/${id}`, 'DELETE', null, { deleted: id, queued: true }, async () => {
+    const key = '/api/memories?limit=100'
+    const current = await readCache(key).catch(() => []) || []
+    await writeCache(key, current.filter((item) => item.id !== id))
+  })
 }
 
 export async function fetchAllMessages() {
-  const [conversations, messages] = await Promise.all([fetchConversations(), request('/api/messages?limit=1000')])
+  const [conversations, messages] = await Promise.all([fetchConversations(), cachedGet('/api/messages?limit=1000')])
   const titles = new Map(conversations.map((conversation) => [conversation.id, conversation.title]))
   return messages.map((message) => ({ ...message, conversations: { title: titles.get(message.conversation_id) || 'محادثة' } }))
 }

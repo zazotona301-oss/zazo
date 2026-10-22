@@ -253,6 +253,31 @@ body {
   overflow: hidden;
 }
 
+.offline-status {
+  position: absolute;
+  top: 12px;
+  left: 24px;
+  right: 24px;
+  z-index: 5;
+  padding: 8px 14px;
+  border-radius: 10px;
+  font-size: 12px;
+  text-align: center;
+  border: 1px solid var(--border);
+  background: rgba(17, 28, 43, 0.94);
+  color: var(--text-secondary);
+}
+
+.offline-status.offline {
+  border-color: rgba(255, 170, 80, 0.4);
+  color: #ffc58c;
+}
+
+.offline-status.online {
+  border-color: rgba(76, 224, 218, 0.35);
+  color: var(--accent);
+}
+
 .main-header {
   padding: 16px 24px;
   border-bottom: 1px solid var(--border);

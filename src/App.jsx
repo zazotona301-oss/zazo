@@ -16,6 +16,7 @@ import {
   fetchConversations,
   createConversation,
   deleteConversation,
+  subscribeSyncStatus,
 } from './lib/api'
 
 export default function App() {
@@ -25,9 +26,11 @@ export default function App() {
   const [loadingConvos, setLoadingConvos] = useState(true)
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [toast, setToast] = useState(null)
+  const [syncStatus, setSyncStatus] = useState({ online: navigator.onLine, pending: 0, syncing: false })
 
   useEffect(() => {
     loadConversations()
+    return subscribeSyncStatus(setSyncStatus)
   }, [])
 
   async function loadConversations() {
@@ -179,6 +182,9 @@ export default function App() {
       </aside>
 
       <main className="main-area">
+        {(!syncStatus.online || syncStatus.pending > 0 || syncStatus.syncing) && <div className={`offline-status ${syncStatus.online ? 'online' : 'offline'}`}>
+          {!syncStatus.online ? 'لا يوجد اتصال — الحفظ محلياً وستتم المزامنة تلقائياً عند عودة الإنترنت' : syncStatus.syncing ? 'جارٍ مزامنة البيانات...' : `بيانات محفوظة محلياً بانتظار المزامنة: ${syncStatus.pending}`}
+        </div>}
         {view === 'chat' ? (
           <ChatView
             conversation={activeConversation}
