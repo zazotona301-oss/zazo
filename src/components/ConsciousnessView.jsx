@@ -18,10 +18,10 @@ const readinessItems = [
     tone: 'ready',
   },
   {
-    title: 'Supabase',
-    detail: 'تخزين المحادثات والمعرفة يعتمد على إعداد مفاتيح البيئة.',
-    status: hasSupabaseConfig() ? 'الإعداد موجود' : 'يحتاج إعداداً',
-    tone: hasSupabaseConfig() ? 'ready' : 'pending',
+    title: 'Cloudflare Worker · Neon · KV',
+    detail: 'الواجهة تتصل بباك إند Worker؛ Neon للتخزين الدائم وKV للسياق والأرشيف.',
+    status: 'موصول عبر REST',
+    tone: 'ready',
   },
   {
     title: 'ذاكرة متجهية',
@@ -48,10 +48,6 @@ const readinessItems = [
     tone: 'pending',
   },
 ]
-
-function hasSupabaseConfig() {
-  return Boolean(import.meta.env.VITE_SUPABASE_URL && import.meta.env.VITE_SUPABASE_ANON_KEY)
-}
 
 export default function ConsciousnessView({ onToast }) {
   async function copyPersona() {
@@ -118,8 +114,8 @@ export default function ConsciousnessView({ onToast }) {
           <article className="consciousness-card">
             <span className="consciousness-card-index">02</span>
             <h3>الذاكرة والمعرفة</h3>
-            <p>تخزين المحادثات ومدخلات المعرفة متاح عبر Supabase عند ضبط إعداداته. لم تُربط قاعدة متجهية للاسترجاع الدلالي بعد.</p>
-            <span className="consciousness-card-tag">Supabase · Vector DB لاحقاً</span>
+            <p>تخزين المحادثات ومدخلات المعرفة يتم عبر Worker في Neon، مع تجهيز PGVector للبحث الدلالي لاحقاً.</p>
+            <span className="consciousness-card-tag">Neon · KV · PGVector</span>
           </article>
           <article className="consciousness-card">
             <span className="consciousness-card-index">03</span>

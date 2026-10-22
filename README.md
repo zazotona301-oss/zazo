@@ -1,6 +1,6 @@
 # Zazo Brain
 
-واجهة React/Vite عربية مع تطبيق Android أصلي صغير بلغة Kotlin يعرض الواجهة داخل WebView آمن باستخدام `WebViewAssetLoader`. يجري تضمين ناتج React داخل التطبيق وقت البناء كـ fallback محلي، ويمكن للإصدار الذي حُقن فيه رابط HTTPS صالح أن يبدأ من واجهة Cloudflare Pages البعيدة كي تصل تحديثات الواجهة دون إعادة تثبيت APK. يحتاج اتصال Supabase إلى إعدادات المشروع الحالية.
+واجهة React/Vite عربية مع تطبيق Android أصلي صغير بلغة Kotlin يعرض الواجهة داخل WebView آمن باستخدام `WebViewAssetLoader`. تجري الواجهة اتصالات البيانات عبر Worker backend مستقل، ويخزن Neon البيانات الدائمة وKV السياق والأرشيفات.
 
 ## بناء التطبيق محلياً
 
@@ -47,14 +47,14 @@ ZAZO_WEB_UI_URL="$PAGES_UI_URL" \
    - `ANDROID_KEYSTORE_PASSWORD`: كلمة مرور ملف keystore.
    - `ANDROID_KEY_ALIAS`: اسم المفتاح داخل الملف.
    - `ANDROID_KEY_PASSWORD`: كلمة مرور المفتاح.
-   - `VITE_SUPABASE_URL` و`VITE_SUPABASE_ANON_KEY`: قيم عميل Supabase العامة، عند الرغبة في تشغيل وظائف البيانات.
+   - `VITE_API_BASE_URL`: اختياري؛ الافتراضي `https://zazo-brain-backend.zazotona301.workers.dev`.
 2. أنشئ keystore بنفسك واحفظ نسخة احتياطية آمنة خارج GitHub. مثال إنشاء مفتاح JKS: `keytool -genkeypair -v -storetype JKS -keystore zazo-release.jks -alias zazo-release -keyalg RSA -keysize 3072 -validity 10000`. لا ترفع keystore أو كلمات مروره إلى Git أو Issues. يمكن تحويل الملف إلى Base64 محلياً بـ `base64 -w 0 zazo-release.jks` (أو `base64 zazo-release.jks` على macOS) ثم وضع الناتج في السر المذكور. فقد المفتاح يمنع توقيع تحديثات قابلة للتثبيت فوق النسخة المنشورة.
 3. افتح [إعدادات GitHub Pages](https://github.com/zazotona301-oss/zazo/settings/pages)، ثم في **Build and deployment → Source** اختر **GitHub Actions** واحفظ. هذا تفعيل لمرة واحدة؛ لا يستطيع رمز GitHub Actions الحالي إنشاء موقع Pages بنفسه. إذا لم يكن الموقع مفعّلاً، سيضيف سير العمل تحذيراً ويتخطى نشر الفهرس، مع إكمال بناء APK/AAB ورفعها. بعد التفعيل أعد تشغيل سير العمل على الوسم الموجود لنشر الفهرس.
 4. افتح [إنشاء إصدار جديد](https://github.com/zazotona301-oss/zazo/releases/new)، اختر أو أنشئ وسماً مثل `v1.0.0` واجعل الهدف `main`، ثم اضغط **Publish release**. بعد النشر، يبدأ GitHub Actions تلقائياً ويضيف APK وAAB و`SHA256SUMS.txt` إلى صفحة الإصدار ذاتها. استخدم وسماً جديداً بصيغة `vX.Y.Z` لكل إصدار لاحق.
 
 إذا فشل بناء إصدار منشور وأُصلح السبب، يمكن إعادة المحاولة من **Actions → Android release → Run workflow** مع إدخال الوسم الموجود، مثل `v1.0.0`، لإرفاق الملفات بالإصدار نفسه.
 
-أسماء أسرار Supabase هنا قيم عميل فقط؛ المفتاح الذي يضمّن في تطبيق Android سيكون متاحاً لمستخدم التطبيق. لا تستخدم أبداً مفتاح Supabase من نوع `service_role` في تطبيق أو متغيرات Vite.
+لا تضع بيانات اتصال Neon أو أسرار Cloudflare داخل الواجهة أو تطبيق Android. الواجهة تستخدم عنوان Worker العام فقط.
 
 ## التنزيل والتحديث الهوائي
 
@@ -66,26 +66,20 @@ ZAZO_WEB_UI_URL="$PAGES_UI_URL" \
 
 ## الأسرار المطلوبة على GitHub
 
-لا يضع المستودع مفاتيح التوقيع أو بيانات Supabase داخل المصدر. إذا لم تضف الأسرار الأربعة `ANDROID_*` فسيرفض سير عمل الإصدارات إنتاج إصدار غير موقّع. إعداد Supabase اختياري للبناء لكنه مطلوب كي تتصل المحادثات وقاعدة المعرفة والتحليلات بقاعدة بيانات المشروع.
+لا يضع المستودع مفاتيح التوقيع أو بيانات Neon داخل المصدر. إذا لم تضف الأسرار الأربعة `ANDROID_*` فسيرفض سير عمل الإصدارات إنتاج إصدار غير موقّع. عنوان Worker يضبط عبر متغير `VITE_API_BASE_URL` أو يستخدم القيمة الافتراضية العامة.
 
 
 ## تشغيل مسار التدريب والربط الخلفي
 
 أضيف إلى المشروع مسار موحد لتجميع بيانات تدريب Zazo:
 
-- **المحادثة** تحفظ الرسائل في Supabase وتستدعي Edge Function باسم `zazo-chat` عند توفرها. إذا لم تكن الخدمة مهيأة، يظهر رد محلي احتياطي واضح بدلاً من فقد الرسالة.
+- **المحادثة** تحفظ الرسائل عبر Worker في Neon، بينما تستخدم KV للسياق النشط وأرشيفات JSONL.
 - **الإدخال الصوتي** يستخدم Web Speech API من زر الميكروفون داخل المحادثة، ثم يحفظ النص الناتج كمصدر `text`.
 - **محلل البيانات** يقبل `JSON`, `JSONL/NDJSON`, `CSV`, `TSV`, `Markdown` و`TXT`. يعرض معاينة قبل الحفظ ويحوّل الحقول الشائعة (`prompt/input/question` و`response/output/answer`) إلى `instruction/context/response`.
 - كل سجل مستورد يحمل `metadata` تتضمن اسم المصدر ورقم الصف وحالة `needs_review`. السجلات التي لا تحتوي استجابة لا تُفقد، لكنها تظهر كمحتوى يحتاج مراجعة قبل تصدير JSONL للتدريب.
 
-### تطبيق migration وتشغيل النموذج
+### إعداد التخزين
 
-طبّق ملفات `supabase/migrations` على مشروع Supabase، ثم انشر الوظيفة:
+مستودع الباك إند هو `zazotona301-oss/zazo-brain-backend`. يربط `wrangler.toml` الـ Worker بموارد `HYPERDRIVE` إلى Neon و`ACTIVE_CONTEXT` و`ARCHIVE_STORE` إلى KV. طبّق migration Neon الموجودة في مستودع الباك إند قبل استخدام مسارات الذاكرة.
 
-```bash
-supabase db push
-supabase functions deploy zazo-chat
-supabase secrets set OPENAI_API_KEY=... OPENAI_MODEL=gpt-4o-mini
-```
-
-لا تضع `OPENAI_API_KEY` في `VITE_*` أو داخل تطبيق Android. الواجهة تستخدم فقط `VITE_SUPABASE_URL` و`VITE_SUPABASE_ANON_KEY`، بينما مفتاح النموذج يبقى داخل Edge Function.
+عنوان الـ API الافتراضي هو `https://zazo-brain-backend.zazotona301.workers.dev`، ويمكن تغييره عبر `VITE_API_BASE_URL` عند الحاجة.

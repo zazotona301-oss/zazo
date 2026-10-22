@@ -142,7 +142,7 @@ export default function ChatView({ conversation, onToast, onConversationCreated 
 function generateResponse(userInput) {
   const keywords = extractKeywords(userInput)
   const intent = detectIntent(userInput)
-  return { content: `تم استلام فكرتك وتسجيلها.\n\nالنية المكتشفة: ${intent}\nالكلمات المفتاحية: ${keywords.join('، ') || 'لا يوجد'}\n\nفعّل Supabase Edge Function باسم zazo-chat لتمرير الطلب إلى نموذجك الفعلي.`, metadata: { intent, keywords, source: 'local_fallback' } }
+  return { content: `تم استلام فكرتك وتسجيلها في Neon عبر Worker.\n\nالنية المكتشفة: ${intent}\nالكلمات المفتاحية: ${keywords.join('، ') || 'لا يوجد'}\n\nلم يتم تفعيل نموذج الاستدلال بعد، لذلك ظهر الرد المحلي.`, metadata: { intent, keywords, source: 'local_fallback' } }
 }
 
 function extractKeywords(text) {
