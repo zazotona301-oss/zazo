@@ -309,6 +309,38 @@ body {
   font: inherit;
 }
 
+.analysis-actions {
+  display: flex;
+  justify-content: flex-start;
+  margin: 10px 0;
+}
+
+.analysis-json {
+  margin: 10px 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: rgba(5, 12, 22, 0.55);
+}
+
+.analysis-json summary {
+  cursor: pointer;
+  padding: 8px 12px;
+  color: var(--accent);
+  font-size: 12px;
+}
+
+.analysis-json pre {
+  max-height: 220px;
+  overflow: auto;
+  margin: 0;
+  padding: 10px 12px;
+  direction: ltr;
+  text-align: left;
+  white-space: pre-wrap;
+  color: var(--text-secondary);
+  font-size: 11px;
+}
+
 .header-btn {
   padding: 8px 14px;
   border-radius: var(--radius-sm);

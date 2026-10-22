@@ -145,6 +145,17 @@ export async function transcribeAudio(file, language = 'ar') {
   return payload
 }
 
+export async function analyzeIntellectualText(text, metadata = {}) {
+  const response = await fetch(`${API_BASE_URL}/api/intellectual-extract`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text, title: metadata.title || '', authorOrSpeaker: metadata.authorOrSpeaker || '', category: metadata.category || '' }),
+  })
+  const payload = await response.json().catch(() => ({}))
+  if (!response.ok) throw new Error(payload.message || payload.error || 'تعذر تحليل المحتوى الفكري')
+  return payload
+}
+
 export async function createConversation(title = 'محادثة جديدة') {
   const id = createLocalId()
   const optimistic = { id, title, metadata: {}, created_at: new Date().toISOString(), updated_at: new Date().toISOString(), offline: true }

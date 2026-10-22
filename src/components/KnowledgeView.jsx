@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef } from 'react'
 import { IconDownload, IconTrash, IconPlus, IconSave, IconClose, IconUpload, IconMic } from './Icons'
-import { fetchWorlds, fetchKnowledgeEntries, addKnowledgeEntry, addKnowledgeEntries, deleteKnowledgeEntry, downloadJSONL, transcribeAudio } from '../lib/api'
-import { extractBookRecords } from '../lib/fileExtractor'
+import { fetchWorlds, fetchKnowledgeEntries, addKnowledgeEntry, addKnowledgeEntries, deleteKnowledgeEntry, downloadJSONL, transcribeAudio, analyzeIntellectualText } from '../lib/api'
+import { extractFileText } from '../lib/fileExtractor'
+import { parseTrainingSource } from '../lib/dataParser'
 
 const AUDIO_EXTENSIONS = ['mp3', 'wav', 'm4a', 'ogg', 'webm', 'mp4', 'mpeg']
 
@@ -11,6 +12,9 @@ export default function KnowledgeView({ onToast }) {
   const [selectedWorldId, setSelectedWorldId] = useState('')
   const [loading, setLoading] = useState(true)
   const [audioBusy, setAudioBusy] = useState(false)
+  const [analysisBusy, setAnalysisBusy] = useState(false)
+  const [analysisJson, setAnalysisJson] = useState('')
+  const [rawSourceText, setRawSourceText] = useState('')
   const [showModal, setShowModal] = useState(false)
   const [showImporter, setShowImporter] = useState(false)
   const [preview, setPreview] = useState([])
@@ -53,11 +57,14 @@ export default function KnowledgeView({ onToast }) {
         setAudioBusy(true)
         const result = await transcribeAudio(file)
         if (!result.text?.trim()) throw new Error('التفريغ الصوتي فارغ')
+        setRawSourceText(result.text.trim())
         setPreview([{ instruction: `محتوى صوتي: ${file.name}`, context: '', response: result.text.trim(), tags: ['audio', 'transcription'], metadata: { ingestion: 'audio_transcription', needs_review: true } }])
         setShowImporter(true)
         onToast('تم تحويل الصوت إلى نص — راجعه قبل الحفظ')
       } else {
-        const parsed = await extractBookRecords(file)
+        const text = await extractFileText(file)
+        setRawSourceText(text)
+        const parsed = parseTrainingSource(text, file.name)
         setPreview(parsed)
         setShowImporter(true)
         onToast(`تم تحليل ${parsed.length} سجل من ${file.name} — راجعها قبل الحفظ`)
@@ -65,6 +72,24 @@ export default function KnowledgeView({ onToast }) {
     } catch (error) {
       onToast(error.message || 'تعذر قراءة الملف أو الصيغة غير صحيحة', true)
     } finally { setAudioBusy(false) }
+  }
+
+  async function handleIntellectualAnalysis() {
+    if (!rawSourceText.trim()) { onToast('لا يوجد نص للتحليل', true); return }
+    setAnalysisBusy(true)
+    try {
+      const analysis = await analyzeIntellectualText(rawSourceText, { title: sourceName, category: worlds.find((world) => world.id === selectedWorldId)?.name || 'فلسفة ووعي' })
+      setAnalysisJson(JSON.stringify(analysis, null, 2))
+      const nodes = (analysis.extracted_nodes || []).map((node, index) => ({
+        instruction: node.concept_title || `concept_${String(index + 1).padStart(3, '0')}`,
+        context: [node.core_summary, node.key_takeaway].filter(Boolean).join('\n\n'),
+        response: node.original_quote || '',
+        tags: Array.isArray(node.tags) ? node.tags : ['intellectual-analysis'],
+        metadata: { ingestion: 'intellectual_extraction', needs_review: true, cognitive_relevance_score: node.cognitive_relevance_score, node_id: node.node_id },
+      }))
+      setPreview(nodes)
+      onToast(`استخرج المحلل ${nodes.length} عقد فكرية — راجعها قبل الحفظ`)
+    } catch (error) { onToast(error.message || 'فشل التحليل الفكري', true) } finally { setAnalysisBusy(false) }
   }
 
   async function handleImport() {
@@ -100,7 +125,7 @@ export default function KnowledgeView({ onToast }) {
       </div>)}</div>}
     </div>
 
-    {showImporter && <div className="modal-overlay" onClick={() => setShowImporter(false)}><div className="modal import-modal" onClick={(e) => e.stopPropagation()}><div className="modal-title-row"><h3>معاينة المحلل · {sourceName}</h3><button className="icon-btn" onClick={() => setShowImporter(false)}><IconClose /></button></div><p className="analyst-hint">تم التعرف على {preview.length} سجل داخل العالم المختار. السجلات بدون Response ستُحفظ كأفكار تحتاج مراجعة.</p><div className="import-preview">{preview.slice(0, 20).map((item, index) => <div className="import-row" key={index}><span className="import-index">{index + 1}</span><div><strong>{item.instruction || 'بدون تعليمة'}</strong><small>{item.response || 'بدون استجابة — مراجعة مطلوبة'}</small></div><span className={item.response ? 'ready-dot' : 'review-dot'} /></div>)}</div><div className="modal-actions"><button className="btn-secondary" onClick={() => setShowImporter(false)}>إلغاء</button><button className="btn-primary" onClick={handleImport}><IconSave size={16} /> حفظ {preview.length} سجل</button></div></div></div>}
+    {showImporter && <div className="modal-overlay" onClick={() => setShowImporter(false)}><div className="modal import-modal" onClick={(e) => e.stopPropagation()}><div className="modal-title-row"><h3>معاينة المحلل · {sourceName}</h3><button className="icon-btn" onClick={() => setShowImporter(false)}><IconClose /></button></div><p className="analyst-hint">تم التعرف على {preview.length} سجل داخل العالم المختار. السجلات بدون Response ستُحفظ كأفكار تحتاج مراجعة.</p><div className="analysis-actions"><button className="header-btn" onClick={handleIntellectualAnalysis} disabled={analysisBusy}>{analysisBusy ? 'جارٍ استخراج العقد...' : 'تحليل فكري عميق'}</button></div>{analysisJson && <details className="analysis-json"><summary>عرض JSON الصارم الناتج</summary><pre>{analysisJson}</pre></details>}<div className="import-preview">{preview.slice(0, 20).map((item, index) => <div className="import-row" key={index}><span className="import-index">{index + 1}</span><div><strong>{item.instruction || 'بدون تعليمة'}</strong><small>{item.response || 'بدون استجابة — مراجعة مطلوبة'}</small></div><span className={item.response ? 'ready-dot' : 'review-dot'} /></div>)}</div><div className="modal-actions"><button className="btn-secondary" onClick={() => setShowImporter(false)}>إلغاء</button><button className="btn-primary" onClick={handleImport}><IconSave size={16} /> حفظ {preview.length} سجل</button></div></div></div>}
     {showModal && <div className="modal-overlay" onClick={() => setShowModal(false)}><div className="modal" onClick={(e) => e.stopPropagation()}><h3>إدخال فكرة أو عينة تدريب</h3><Field label="الفكرة / Instruction *" value={form.instruction} onChange={(value) => setForm({ ...form, instruction: value })} placeholder="ما الذي تريد تعليمه للنموذج؟" /><Field label="السياق / Context" value={form.context} onChange={(value) => setForm({ ...form, context: value })} placeholder="سياق إضافي اختياري" /><Field label="الإجابة / Response" value={form.response} onChange={(value) => setForm({ ...form, response: value })} placeholder="اتركها فارغة إن كانت فكرة تحتاج مراجعة" /><div className="modal-field"><label>وسوم</label><input value={form.tags} onChange={(e) => setForm({ ...form, tags: e.target.value })} placeholder="book, arabic, audio" /></div><div className="modal-actions"><button className="btn-secondary" onClick={() => setShowModal(false)}>إلغاء</button><button className="btn-primary" onClick={handleAdd}><IconSave size={16} /> حفظ</button></div></div></div>}
   </>
 }
