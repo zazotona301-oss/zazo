@@ -298,6 +298,17 @@ body {
   align-items: center;
 }
 
+.world-select {
+  min-width: 150px;
+  max-width: 220px;
+  padding: 8px 10px;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-sm);
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  font: inherit;
+}
+
 .header-btn {
   padding: 8px 14px;
   border-radius: var(--radius-sm);

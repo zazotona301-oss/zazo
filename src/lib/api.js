@@ -126,6 +126,25 @@ export function fetchConversations() {
   return cachedGet('/api/conversations?limit=100')
 }
 
+export function fetchWorlds() {
+  return cachedGet('/api/worlds?limit=100')
+}
+
+export async function transcribeAudio(file, language = 'ar') {
+  const formData = new FormData()
+  formData.append('file', file, file.name || 'audio.webm')
+  formData.append('language', language)
+  let response
+  try {
+    response = await fetch(`${API_BASE_URL}/api/transcribe`, { method: 'POST', body: formData })
+  } catch {
+    throw new Error('لا يوجد اتصال لتحويل الصوت حالياً؛ احفظ التسجيل كنص عند عودة الإنترنت')
+  }
+  const payload = await response.json().catch(() => ({}))
+  if (!response.ok) throw new Error(payload.message || payload.error || 'تعذر تحويل الصوت إلى نص')
+  return payload
+}
+
 export async function createConversation(title = 'محادثة جديدة') {
   const id = createLocalId()
   const optimistic = { id, title, metadata: {}, created_at: new Date().toISOString(), updated_at: new Date().toISOString(), offline: true }
@@ -204,6 +223,8 @@ export async function fetchAllMessages() {
 
 function toMemory(entry) {
   return {
+    worldId: entry.worldId,
+    roomId: entry.roomId,
     instruction: entry.instruction,
     context: entry.context || '',
     response: entry.response || '',
