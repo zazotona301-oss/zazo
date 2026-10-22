@@ -1497,3 +1497,18 @@ body {
   pointer-events: none;
   z-index: -1;
 }
+
+.upload-label {
+  user-select: none;
+  text-decoration: none;
+}
+
+.upload-label.is-disabled {
+  opacity: 0.55;
+  cursor: wait;
+  pointer-events: none;
+}
+
+.native-file-input {
+  pointer-events: auto;
+}

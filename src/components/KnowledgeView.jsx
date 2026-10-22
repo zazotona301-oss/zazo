@@ -110,10 +110,10 @@ export default function KnowledgeView({ onToast }) {
         <option value="">العالم الافتراضي</option>{worlds.map((world) => <option key={world.id} value={world.id}>{world.name}</option>)}
       </select>
       <button className="header-btn" onClick={() => downloadJSONL(entries)}><IconDownload /> تصدير JSONL</button>
-      <button className="header-btn" onClick={() => fileRef.current?.click()}><IconUpload /> رفع كتاب / ملف</button>
-      <button className="header-btn" onClick={() => audioRef.current?.click()} disabled={audioBusy}><IconMic /> {audioBusy ? 'جاري التفريغ...' : 'رفع صوت'}</button>
-      <input ref={fileRef} className="native-file-input" type="file" accept=".pdf,.docx,.epub,.txt,.md,.markdown,.html,.htm,.json,.jsonl,.ndjson,.csv,.tsv" onClick={(e) => { e.currentTarget.value = '' }} onChange={(e) => handleFile(e.target.files?.[0])} />
-      <input ref={audioRef} className="native-file-input" type="file" accept="audio/*,.mp3,.wav,.m4a,.ogg,.webm,.mp4,.flac" onClick={(e) => { e.currentTarget.value = '' }} onChange={(e) => handleFile(e.target.files?.[0])} />
+      <label className="header-btn upload-label" htmlFor="knowledge-file-input"><IconUpload /> رفع كتاب / ملف</label>
+      <label className={`header-btn upload-label ${audioBusy ? 'is-disabled' : ''}`} htmlFor="knowledge-audio-input" aria-disabled={audioBusy}><IconMic /> {audioBusy ? 'جاري التفريغ...' : 'رفع صوت'}</label>
+      <input id="knowledge-file-input" ref={fileRef} className="native-file-input" type="file" accept=".pdf,.docx,.epub,.txt,.md,.markdown,.html,.htm,.json,.jsonl,.ndjson,.csv,.tsv" onClick={(e) => { e.currentTarget.value = '' }} onChange={(e) => handleFile(e.target.files?.[0])} />
+      <input id="knowledge-audio-input" ref={audioRef} className="native-file-input" type="file" accept="audio/*,.mp3,.wav,.m4a,.ogg,.webm,.mp4,.flac" onClick={(e) => { e.currentTarget.value = '' }} onChange={(e) => handleFile(e.target.files?.[0])} />
       <button className="header-btn" style={{ borderColor: 'var(--accent)', color: 'var(--accent)' }} onClick={() => setShowModal(true)}><IconPlus /> إدخال يدوي</button>
     </div></div>
     <div className="kb-container"><div className="kb-header"><div><p className="analyst-hint">يدعم PDF وDOCX وEPUB وHTML وJSON وCSV وMarkdown وTXT، مع تفريغ الملفات الصوتية إلى نص قبل الحفظ في العالم المختار.</p></div><div className="kb-stats"><div className="kb-stat"><strong>{entries.length}</strong> سجل</div><div className="kb-stat"><strong>{countUniqueTags(entries)}</strong> وسوم</div></div></div>
