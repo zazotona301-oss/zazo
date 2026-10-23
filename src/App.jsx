@@ -3,6 +3,7 @@ import ChatView from './components/ChatView'
 import KnowledgeView from './components/KnowledgeView'
 import AnalyticsView from './components/AnalyticsView'
 import ConsciousnessView from './components/ConsciousnessView'
+import LoraUploadView from './components/LoraUploadView'
 import {
   IconChat,
   IconCpu,
@@ -135,6 +136,15 @@ export default function App() {
           >
             <IconAnalytics /> محرك التحليل
           </button>
+          <button
+            className={`nav-item ${view === 'lora-upload' ? 'active' : ''}`}
+            onClick={() => {
+              setView('lora-upload')
+              setSidebarOpen(false)
+            }}
+          >
+            <IconCpu /> تدريب Zazo / رفع LoRA
+          </button>
         </nav>
 
         <div className="sidebar-section-label">المحادثات</div>
@@ -195,6 +205,8 @@ export default function App() {
           <KnowledgeView onToast={showToast} />
         ) : view === 'analytics' ? (
           <AnalyticsView onToast={showToast} />
+        ) : view === 'lora-upload' ? (
+          <LoraUploadView onToast={showToast} />
         ) : (
           <ConsciousnessView onToast={showToast} />
         )}

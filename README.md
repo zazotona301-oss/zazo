@@ -84,6 +84,12 @@ ZAZO_WEB_UI_URL="$PAGES_UI_URL" \
 - **محلل البيانات** يقبل `JSON`, `JSONL/NDJSON`, `CSV`, `TSV`, `Markdown` و`TXT`. يعرض معاينة قبل الحفظ ويحوّل الحقول الشائعة (`prompt/input/question` و`response/output/answer`) إلى `instruction/context/response`.
 - كل سجل مستورد يحمل `metadata` تتضمن اسم المصدر ورقم الصف وحالة `needs_review`. السجلات التي لا تحتوي استجابة لا تُفقد، لكنها تظهر كمحتوى يحتاج مراجعة قبل تصدير JSONL للتدريب.
 
+### تدريب ورفع Zazo Brain
+
+دفتر [zazo_brain_gemma_cloudflare_training.ipynb](colab/zazo_brain_gemma_cloudflare_training.ipynb) يسحب بيانات JSONL من Cloudflare KV مع pagination، وينظفها إلى محادثات، ثم يدرب `google/gemma-2b-it` باستخدام Transformers وPEFT وTRL. يحفظ Adapter غير مكمّم في Google Drive ويدرج `model_type: gemma` في `adapter_config.json` تمهيدًا لرفعه إلى Cloudflare. يتطلب التدريب GPU متصلًا فعليًا في Colab وقبول شروط Gemma على Hugging Face؛ CPU أو TPU لا يعملان مع هذه النسخة.
+
+بعد ضبط أسرار الرفع في Worker، تتيح الواجهة صفحة **تدريب Zazo / رفع LoRA** لاختيار `adapter_config.json` و`adapter_model.safetensors` وإرسالها بأمان إلى الباك إند، الذي ينشئ fine-tune ويرفع الملفين إلى Cloudflare Workers AI. لا تحفظ الواجهة Cloudflare API Token؛ يطلب رمز رفع إداري منفصل. بعد ظهور معرّف fine-tune، يُضبط `CHAT_PROVIDER=cloudflare` و`CLOUDFLARE_LORA_ID` في Worker لتفعيل النموذج مع RAG من Neon وKV. تظل Raqa مسؤولة عن تصفية النصوص واستخراج المحتوى، ولا يقوم التدريب المستمر تلقائيًا بتحديث الأوزان.
+
 ### إعداد التخزين
 
 مستودع الباك إند هو `zazotona301-oss/zazo-brain-backend`. يربط `wrangler.toml` الـ Worker بموارد `HYPERDRIVE` إلى Neon و`ACTIVE_CONTEXT` و`ARCHIVE_STORE` إلى KV. طبّق migration Neon الموجودة في مستودع الباك إند قبل استخدام مسارات الذاكرة.

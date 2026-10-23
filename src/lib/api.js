@@ -193,8 +193,31 @@ export async function addMessage(conversationId, role, content, metadata = {}) {
   })
 }
 
-export async function requestAssistantResponse() {
-  throw new Error('Model inference endpoint is not configured')
+export async function requestAssistantResponse({ conversationId, messages }) {
+  return sendNetwork('/api/chat', {
+    method: 'POST',
+    body: JSON.stringify({ conversationId, messages }),
+  })
+}
+
+export async function uploadLoraAdapter({ adminToken, configFile, weightsFile, fineTuneName }) {
+  const formData = new FormData()
+  formData.append('adapter_config', configFile, 'adapter_config.json')
+  formData.append('adapter_model', weightsFile, 'adapter_model.safetensors')
+  formData.append('name', fineTuneName)
+  let response
+  try {
+    response = await fetch(`${API_BASE_URL}/api/admin/lora-upload`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${adminToken}` },
+      body: formData,
+    })
+  } catch {
+    throw new Error('تعذر الاتصال بخادم Zazo؛ تحقق من الاتصال ثم حاول مجددًا')
+  }
+  const payload = await response.json().catch(() => ({}))
+  if (!response.ok) throw new Error(payload.message || payload.error || `فشل رفع المحول (${response.status})`)
+  return payload
 }
 
 export async function fetchKnowledgeEntries() {

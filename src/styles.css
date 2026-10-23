@@ -419,6 +419,13 @@ body {
   letter-spacing: 0.5px;
 }
 
+.message-provider {
+  margin-top: 8px;
+  color: var(--text-muted);
+  font-size: 10px;
+  opacity: 0.8;
+}
+
 .empty-chat {
   flex: 1;
   display: flex;
@@ -1564,4 +1571,35 @@ body {
   opacity: 0;
   z-index: 2;
   cursor: pointer;
+}
+
+
+/* واجهة تدريب ورفع محول Zazo Brain إلى Cloudflare Workers AI */
+.lora-upload-page {
+  height: 100%;
+  overflow-y: auto;
+  padding: clamp(24px, 5vw, 56px);
+  color: var(--text-primary);
+}
+.lora-upload-header { max-width: 820px; margin: 0 auto 24px; }
+.lora-eyebrow { color: var(--accent); font-size: 11px; letter-spacing: .12em; font-weight: 700; }
+.lora-upload-header h2 { margin: 8px 0; font-size: clamp(24px, 4vw, 34px); }
+.lora-upload-header p:last-child { color: var(--text-secondary); line-height: 1.8; }
+.lora-upload-card, .lora-result { max-width: 820px; margin: 0 auto 18px; padding: clamp(18px, 3vw, 28px); border: 1px solid var(--border-light); border-radius: var(--radius-lg); background: var(--bg-secondary); }
+.lora-field { display: grid; gap: 8px; margin-bottom: 18px; }
+.lora-field > span, .lora-file-field > span { font-weight: 600; }
+.lora-field input { min-height: 44px; padding: 10px 12px; border: 1px solid var(--border-light); border-radius: var(--radius-sm); color: var(--text-primary); background: var(--bg-primary); font: inherit; }
+.lora-field small, .lora-file-field small { color: var(--text-muted); line-height: 1.6; overflow-wrap: anywhere; }
+.lora-file-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.lora-file-field { display: grid; align-content: start; gap: 10px; min-height: 120px; padding: 16px; border: 1px dashed var(--border-light); border-radius: var(--radius-sm); background: var(--bg-primary); }
+.lora-file-field input[type="file"] { width: 100%; color: var(--text-secondary); font: inherit; }
+.lora-notice { margin: 18px 0; padding: 14px 16px; border-inline-start: 3px solid var(--accent); border-radius: var(--radius-sm); color: var(--text-secondary); background: var(--bg-primary); line-height: 1.8; }
+.lora-submit { width: 100%; min-height: 46px; }
+.lora-submit:disabled { opacity: .65; cursor: wait; }
+.lora-result { border-color: var(--accent); line-height: 1.8; overflow-wrap: anywhere; }
+.lora-result p { margin: 8px 0 0; color: var(--text-secondary); }
+.lora-result code { direction: ltr; unicode-bidi: plaintext; }
+@media (max-width: 640px) {
+  .lora-file-grid { grid-template-columns: 1fr; }
+  .lora-upload-page { padding: 20px 14px; }
 }
