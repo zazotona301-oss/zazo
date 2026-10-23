@@ -4,7 +4,6 @@ import { uploadLoraAdapter } from '../lib/api'
 const MAX_LORA_WEIGHTS_BYTES = 40 * 1024 * 1024
 
 export default function LoraUploadView({ onToast }) {
-  const [adminToken, setAdminToken] = useState('')
   const [configFile, setConfigFile] = useState(null)
   const [weightsFile, setWeightsFile] = useState(null)
   const [fineTuneName, setFineTuneName] = useState('zazo-brain-v1')
@@ -13,7 +12,6 @@ export default function LoraUploadView({ onToast }) {
 
   async function handleSubmit(event) {
     event.preventDefault()
-    if (!adminToken.trim()) return onToast('أدخل رمز الرفع الإداري', true)
     if (!configFile || !weightsFile) return onToast('اختر adapter_config.json وadapter_model.safetensors', true)
     if (configFile.name !== 'adapter_config.json' || weightsFile.name !== 'adapter_model.safetensors') {
       return onToast('يجب أن يكون اسما الملفين adapter_config.json وadapter_model.safetensors بالضبط', true)
@@ -24,7 +22,7 @@ export default function LoraUploadView({ onToast }) {
     setBusy(true)
     setResult(null)
     try {
-      const uploaded = await uploadLoraAdapter({ adminToken, configFile, weightsFile, fineTuneName })
+      const uploaded = await uploadLoraAdapter({ configFile, weightsFile, fineTuneName })
       setResult(uploaded)
       onToast('تم رفع محول Zazo إلى Cloudflare Workers AI')
     } catch (error) {
@@ -45,18 +43,14 @@ export default function LoraUploadView({ onToast }) {
       </header>
 
       <form className="lora-upload-card" onSubmit={handleSubmit}>
-        <label className="lora-field">
-          <span>رمز الرفع الإداري</span>
-          <input
-            type="password"
-            autoComplete="off"
-            value={adminToken}
-            onChange={(event) => setAdminToken(event.target.value)}
-            placeholder="أدخل الرمز الذي ضبطته كسرّ في Worker"
-            required
-          />
-          <small>يُرسل إلى Worker للتحقق ولا يُحفظ في المتصفح أو داخل المستودع.</small>
-        </label>
+        <div className="lora-access-box">
+          <strong>مصادقة الإدارة عبر Cloudflare Access</strong>
+          <p>اضغط تسجيل الدخول للانتقال إلى Cloudflare، واستخدم الحساب المرتبط بالبريد المصرح به. بعد نجاح الدخول، ارجع إلى هذه الصفحة وأكمل الرفع دون إدخال رمز الإدارة.</p>
+          <a className="btn-secondary lora-access-link" href="/api/admin/access-login" target="_blank" rel="noopener noreferrer">
+            تسجيل الدخول إلى Cloudflare Access
+          </a>
+          <small>الوصول مقصور على البريد zazotona301@gmail.com، وتستمر الجلسة لمدة تصل إلى 24 ساعة.</small>
+        </div>
 
         <label className="lora-field">
           <span>اسم Fine-tune</span>

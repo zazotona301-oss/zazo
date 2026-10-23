@@ -1,4 +1,4 @@
-const CACHE_NAME = 'zazo-ui-v1'
+const CACHE_NAME = 'zazo-ui-v2'
 
 self.addEventListener('install', (event) => {
   event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(['/','/index.html'])))
@@ -6,12 +6,16 @@ self.addEventListener('install', (event) => {
 })
 
 self.addEventListener('activate', (event) => {
-  event.waitUntil(self.clients.claim())
+  event.waitUntil(Promise.all([
+    self.clients.claim(),
+    caches.keys().then((keys) => Promise.all(keys.filter((key) => key.startsWith('zazo-ui-') && key !== CACHE_NAME).map((key) => caches.delete(key)))),
+  ]))
 })
 
 self.addEventListener('fetch', (event) => {
   const request = event.request
-  if (request.method !== 'GET' || new URL(request.url).origin !== self.location.origin) return
+  const url = new URL(request.url)
+  if (request.method !== 'GET' || url.origin !== self.location.origin || url.pathname.startsWith('/api/')) return
 
   if (request.mode === 'navigate') {
     event.respondWith(fetch(request).then((response) => {

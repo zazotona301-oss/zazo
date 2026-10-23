@@ -200,24 +200,28 @@ export async function requestAssistantResponse({ conversationId, messages }) {
   })
 }
 
-export async function uploadLoraAdapter({ adminToken, configFile, weightsFile, fineTuneName }) {
+export async function uploadLoraAdapter({ configFile, weightsFile, fineTuneName }) {
   const formData = new FormData()
   formData.append('adapter_config', configFile, 'adapter_config.json')
   formData.append('adapter_model', weightsFile, 'adapter_model.safetensors')
   formData.append('name', fineTuneName)
   let response
   try {
-    response = await fetch(`${API_BASE_URL}/api/admin/lora-upload`, {
+    response = await fetch('/api/admin/lora-upload', {
       method: 'POST',
-      headers: { Authorization: `Bearer ${adminToken}` },
       body: formData,
     })
   } catch (error) {
     const reason = error instanceof Error && error.message ? error.message : 'خطأ شبكة غير معروف'
     throw new Error(`تعذر الاتصال بخادم Zazo؛ السبب من المتصفح: ${reason}. تحقق من الاتصال وحجم الملف ثم حاول مجددًا`)
   }
-  const payload = await response.json().catch(() => ({}))
+  const isJson = response.headers.get('content-type')?.includes('application/json')
+  const payload = isJson ? await response.json().catch(() => ({})) : {}
+  if (!isJson) {
+    throw new Error('لم يكتمل تسجيل الدخول إلى Cloudflare Access. افتح زر تسجيل الدخول في صفحة الرفع، ثم ارجع وأعد المحاولة.')
+  }
   if (!response.ok) throw new Error(payload.message || payload.error || `فشل رفع المحول (${response.status})`)
+  if (!payload.success) throw new Error(payload.message || 'لم يؤكد الخادم اكتمال رفع المحول')
   return payload
 }
 
