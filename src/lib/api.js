@@ -212,8 +212,9 @@ export async function uploadLoraAdapter({ adminToken, configFile, weightsFile, f
       headers: { Authorization: `Bearer ${adminToken}` },
       body: formData,
     })
-  } catch {
-    throw new Error('تعذر الاتصال بخادم Zazo؛ تحقق من الاتصال ثم حاول مجددًا')
+  } catch (error) {
+    const reason = error instanceof Error && error.message ? error.message : 'خطأ شبكة غير معروف'
+    throw new Error(`تعذر الاتصال بخادم Zazo؛ السبب من المتصفح: ${reason}. تحقق من الاتصال وحجم الملف ثم حاول مجددًا`)
   }
   const payload = await response.json().catch(() => ({}))
   if (!response.ok) throw new Error(payload.message || payload.error || `فشل رفع المحول (${response.status})`)
