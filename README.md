@@ -88,7 +88,7 @@ ZAZO_WEB_UI_URL="$PAGES_UI_URL" \
 
 دفتر [zazo_brain_gemma_cloudflare_training.ipynb](colab/zazo_brain_gemma_cloudflare_training.ipynb) يسحب بيانات JSONL من Cloudflare KV مع pagination، وينظفها إلى محادثات، ثم يدرب `google/gemma-2b-it` باستخدام Transformers وPEFT وTRL. يحفظ Adapter غير مكمّم في Google Drive ويدرج `model_type: gemma` في `adapter_config.json` تمهيدًا لرفعه إلى Cloudflare. يتطلب التدريب GPU متصلًا فعليًا في Colab وقبول شروط Gemma على Hugging Face؛ CPU أو TPU لا يعملان مع هذه النسخة.
 
-بعد ضبط أسرار الرفع في Worker، تتيح الواجهة صفحة **تدريب Zazo / رفع LoRA** لاختيار `adapter_config.json` و`adapter_model.safetensors` وإرسالها بأمان إلى الباك إند، الذي ينشئ fine-tune ويرفع الملفين إلى Cloudflare Workers AI. لا تحفظ الواجهة Cloudflare API Token؛ يطلب رمز رفع إداري منفصل. بعد ظهور معرّف fine-tune، يُضبط `CHAT_PROVIDER=cloudflare` و`CLOUDFLARE_LORA_ID` في Worker لتفعيل النموذج مع RAG من Neon وKV. تظل Raqa مسؤولة عن تصفية النصوص واستخراج المحتوى، ولا يقوم التدريب المستمر تلقائيًا بتحديث الأوزان.
+بعد ضبط أسرار الرفع في Worker، تتيح الواجهة صفحة **تدريب Zazo / رفع LoRA** لاختيار `adapter_config.json` و`adapter_model.safetensors` وإرسالها بأمان إلى الباك إند، الذي ينشئ fine-tune ويرفع الملفين إلى Cloudflare Workers AI. لا تحفظ الواجهة Cloudflare API Token؛ المصادقة تتم عبر Cloudflare Access. بعد ظهور معرّف fine-tune، يضبط الباك إند `CLOUDFLARE_LORA_ID` في إعداد Worker؛ ردود الشات تستخدم Cloudflare Workers AI فقط مع RAG من Neon وKV. تظل Raqa مسؤولة عن تنقية النصوص واستخراج المحتوى، ولا يقوم التدريب المستمر تلقائيًا بتحديث الأوزان.
 
 ### إعداد التخزين
 
