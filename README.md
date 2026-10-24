@@ -86,9 +86,9 @@ ZAZO_WEB_UI_URL="$PAGES_UI_URL" \
 
 ### تدريب ورفع Zazo Brain
 
-دفتر [zazo_brain_gemma_cloudflare_training.ipynb](colab/zazo_brain_gemma_cloudflare_training.ipynb) يسحب بيانات JSONL من Cloudflare KV مع pagination، وينظفها إلى محادثات، ثم يدرب `google/gemma-2b-it` باستخدام Transformers وPEFT وTRL. يحفظ Adapter غير مكمّم في Google Drive ويدرج `model_type: gemma` في `adapter_config.json` تمهيدًا لرفعه إلى Cloudflare. يتطلب التدريب GPU متصلًا فعليًا في Colab وقبول شروط Gemma على Hugging Face؛ CPU أو TPU لا يعملان مع هذه النسخة.
+دفتر [zazo_brain_gemma_cloudflare_training.ipynb](colab/zazo_brain_gemma_cloudflare_training.ipynb) هو الدفتر الموحد للمشروع. يتبع أحدث manifest في `exports/zazo-rag-prepared/latest.json` ويقرأ `readyChunkKeys` فقط؛ ويتحقق من حداثة التصدير وعدد الصفوف وبصمة محتوى البيانات حتى لا يبدأ التدريب على مجموعة قديمة أو فارغة. بعد التدريب، يحفظ كل إصدار في مجلد مستقل على Google Drive ثم يرفع مباشرةً إلى Cloudflare AI؛ لا يمر الرفع عبر حد Worker البالغ 80 MiB. يتطلب GPU متصلًا فعليًا في Colab وقبول شروط Gemma على Hugging Face؛ CPU أو TPU لا يعملان مع هذه النسخة.
 
-بعد ضبط أسرار الرفع في Worker، تتيح الواجهة صفحة **تدريب Zazo / رفع LoRA** لاختيار `adapter_config.json` و`adapter_model.safetensors` وإرسالها بأمان إلى الباك إند، الذي ينشئ fine-tune ويرفع الملفين إلى Cloudflare Workers AI. لا تحفظ الواجهة Cloudflare API Token؛ المصادقة تتم عبر Cloudflare Access. بعد ظهور معرّف fine-tune، يضبط الباك إند `CLOUDFLARE_LORA_ID` في إعداد Worker؛ ردود الشات تستخدم Cloudflare Workers AI فقط مع RAG من Neon وKV. تظل Raqa مسؤولة عن تنقية النصوص واستخراج المحتوى، ولا يقوم التدريب المستمر تلقائيًا بتحديث الأوزان.
+أضف `CF_KV_TOKEN` و`CF_AI_TOKEN`، و`HF_TOKEN` عند الحاجة، مرة واحدة في **Colab Secrets**؛ لا تضع قيمها في الدفتر أو Drive أو Git. بعد نجاح الرفع يحدّث الدفتر المفتاح `active-lora` في namespace `ACTIVE_CONTEXT`. يقرأ Worker هذا المؤشر عند كل طلب شات مع الرجوع إلى `CLOUDFLARE_LORA_ID` إن لم يوجد، لذلك لا يلزم تعديل إعداد Worker أو إعادة نشره بعد كل تدريب (يلزم نشر تعديل قراءة KV أول مرة). صفحة الإدارة ما زالت متاحة للرفع اليدوي عبر Cloudflare Access بحدها الحالي الأقل من 80 MiB. يحتفظ Cloudflare بحد معلن قدره 100 محوّل لكل حساب خلال البيتا؛ يحذّر الدفتر عند 80 ويتوقف عند 95 دون حذف تلقائي. تُستخدم Raqa لتنقية المحتوى واستخراجه، ولا ينشئ الـGitHub Action أوزانًا بنفسه.
 
 ### إعداد التخزين
 
