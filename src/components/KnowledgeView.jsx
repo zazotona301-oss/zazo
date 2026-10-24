@@ -107,7 +107,7 @@ export default function KnowledgeView({ onToast }) {
     try {
       const result = await deleteKnowledgeEntry(id)
       setEntries((prev) => prev.filter((entry) => entry.id !== id))
-      onToast(result.kvDeleted === false ? 'حُذف من Neon لكن تعذر حذفه من KV' : 'تم حذف المدخل من Neon وKV')
+      onToast(result.kvDeleted === false ? 'حُذف من Neon لكن تعذرت إزالة نسخة KV الفورية' : 'حُذف من Neon ونسخة KV الفورية؛ قد يبقى في لقطة تصدير سابقة حتى انتهاء 31 يومًا')
     } catch { onToast('فشل الحذف', true) }
   }
 
