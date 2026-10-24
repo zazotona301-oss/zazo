@@ -51,6 +51,7 @@ export default function ChatView({ conversation, onToast, onConversationCreated 
       const activeConversation = conversation || await onConversationCreated?.()
       if (!activeConversation) throw new Error('conversation creation failed')
       const userMsg = await addMessage(activeConversation.id, 'user', text, { source: 'text' })
+      if (userMsg.kvArchived === false) onToast('حُفظ السؤال في Neon لكن تعذرت نسخه إلى أرشيف KV', true)
       const nextMessages = [...messages, userMsg]
       setMessages(nextMessages)
       const response = await requestAssistantResponse({
@@ -58,6 +59,7 @@ export default function ChatView({ conversation, onToast, onConversationCreated 
         messages: nextMessages.map(({ role, content }) => ({ role, content })),
       })
       const assistantMsg = await addMessage(activeConversation.id, 'assistant', response.content, response.metadata)
+      if (assistantMsg.kvArchived === false) onToast('حُفظ رد Zazo في Neon لكن تعذرت نسخه إلى أرشيف KV', true)
       setMessages((prev) => [...prev, assistantMsg])
     } catch (error) {
       onToast(error?.message || 'تعذر الحصول على رد من نموذج Zazo', true)

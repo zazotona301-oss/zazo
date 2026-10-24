@@ -44,7 +44,8 @@ export default function KnowledgeView({ onToast }) {
         metadata: { ingestion: 'manual', needs_review: !form.response.trim() },
       })
       setEntries((prev) => [entry, ...prev])
-      setForm({ instruction: '', context: '', response: '', tags: '' }); setShowModal(false); onToast('تمت إضافة المدخل إلى العالم')
+      setForm({ instruction: '', context: '', response: '', tags: '' }); setShowModal(false)
+      onToast(entry.kvArchived === false ? 'حُفظ المدخل في Neon لكن تعذرت نسخة KV' : 'تم حفظ المدخل في Neon وأرشفته في KV')
     } catch { onToast('فشل إضافة المدخل', true) }
   }
 
@@ -96,12 +97,18 @@ export default function KnowledgeView({ onToast }) {
     if (!preview.length) return
     try {
       const saved = await addKnowledgeEntries(preview.map((item) => ({ ...item, worldId: selectedWorldId || undefined, source_name: sourceName })))
-      setEntries((prev) => [...saved, ...prev]); setPreview([]); setShowImporter(false); onToast(`تم حفظ ${saved.length} سجل داخل العالم`)
+      setEntries((prev) => [...saved, ...prev]); setPreview([]); setShowImporter(false)
+      const missingKvCopies = saved.filter((entry) => entry.kvArchived === false).length
+      onToast(missingKvCopies ? `حُفظ ${saved.length} سجل في Neon؛ تعذرت أرشفة ${missingKvCopies} سجل في KV` : `تم حفظ وأرشفة ${saved.length} سجل في Neon وKV`)
     } catch { onToast('فشل حفظ البيانات؛ ستبقى في الطابور المحلي عند انقطاع الاتصال', true) }
   }
 
   async function handleDelete(id) {
-    try { await deleteKnowledgeEntry(id); setEntries((prev) => prev.filter((entry) => entry.id !== id)); onToast('تم حذف المدخل') } catch { onToast('فشل الحذف', true) }
+    try {
+      const result = await deleteKnowledgeEntry(id)
+      setEntries((prev) => prev.filter((entry) => entry.id !== id))
+      onToast(result.kvDeleted === false ? 'حُذف من Neon لكن تعذر حذفه من KV' : 'تم حذف المدخل من Neon وKV')
+    } catch { onToast('فشل الحذف', true) }
   }
 
   return <>
