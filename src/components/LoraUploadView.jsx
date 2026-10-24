@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { uploadLoraAdapter } from '../lib/api'
 
-const MAX_LORA_WEIGHTS_BYTES = 40 * 1024 * 1024
+const MAX_LORA_WEIGHTS_BYTES = 80 * 1024 * 1024
 
 export default function LoraUploadView({ onToast }) {
   const [configFile, setConfigFile] = useState(null)
@@ -17,7 +17,7 @@ export default function LoraUploadView({ onToast }) {
       return onToast('يجب أن يكون اسما الملفين adapter_config.json وadapter_model.safetensors بالضبط', true)
     }
     if (weightsFile.size >= MAX_LORA_WEIGHTS_BYTES) {
-      return onToast('حجم adapter_model.safetensors يجب أن يكون أقل من 40 MiB؛ قلّل رتبة LoRA أو عدد الطبقات المستهدفة ثم أعد التصدير', true)
+      return onToast('حجم adapter_model.safetensors يجب أن يكون أقل من 80 MiB؛ قلّل رتبة LoRA أو عدد الطبقات المستهدفة ثم أعد التصدير', true)
     }
     setBusy(true)
     setResult(null)
@@ -78,7 +78,7 @@ export default function LoraUploadView({ onToast }) {
         </div>
 
         <div className="lora-notice">
-          ارفع محولًا مدرّبًا على قاعدة Gemma غير مكمّمة ومتوافقًا مع Cloudflare. يجب أن يكون ملف الأوزان أقل من 40 MiB لتجنّب حد الطلب وقيود ذاكرة Worker. الرفع ينشئ موردًا جديدًا ولا يستبدل محولًا سابقًا.
+          ارفع محولًا مدرّبًا على قاعدة Gemma غير مكمّمة ومتوافقًا مع Cloudflare. يجب أن يكون ملف الأوزان أقل من 80 MiB لتوفير هامش ضمن حد الطلب وذاكرة Worker. الرفع ينشئ موردًا جديدًا ولا يستبدل محولًا سابقًا.
         </div>
 
         <button className="btn-primary lora-submit" type="submit" disabled={busy}>
