@@ -1636,6 +1636,27 @@ body {
 .training-upload-box { position: relative; display: grid; justify-items: center; gap: 8px; padding: 23px 14px; border: 1px dashed var(--border-light); border-radius: var(--radius-sm); color: var(--accent); background: var(--bg-primary); text-align: center; }
 .training-upload-box strong { max-width: 100%; overflow-wrap: anywhere; color: var(--text-primary); }
 .training-upload-box small { color: var(--text-muted); }
+.training-access-box { display: grid; justify-items: start; gap: 7px; margin: 0 0 12px; padding: 13px 15px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--bg-primary); }
+.training-access-box strong { color: var(--text-primary); font-size: 13px; }
+.training-access-box p { margin: 0; color: var(--text-secondary); font-size: 12px; }
+.training-access-box .btn-secondary { display: inline-flex; align-items: center; min-height: 34px; padding: 6px 10px; border: 1px solid var(--border-light); border-radius: var(--radius-sm); color: var(--text-primary); text-decoration: none; font-size: 12px; }
+.training-upload-error { margin: 12px 0 0; padding: 10px 12px; border-inline-start: 3px solid var(--warning); border-radius: var(--radius-sm); color: var(--warning); background: rgba(245, 158, 11, .08); font-size: 12px; line-height: 1.7; }
+.training-invalid-rows { max-height: 180px; overflow: auto; margin: 10px 0 0; padding: 10px 30px 10px 10px; border: 1px solid rgba(245, 158, 11, .3); border-radius: var(--radius-sm); color: var(--warning); font-size: 12px; }
+.training-preview-summary { margin-top: 14px; padding: 13px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--bg-primary); }
+.training-preview-summary > strong { display: block; margin-bottom: 10px; color: var(--text-primary); font-size: 12px; }
+.training-preview-list { display: grid; gap: 8px; max-height: 420px; overflow: auto; }
+.training-preview-row { padding: 10px; border: 1px solid var(--border); border-radius: var(--radius-sm); }
+.training-preview-row > span { color: var(--accent); font-size: 11px; font-weight: 700; }
+.training-preview-row p { margin: 6px 0 0; color: var(--text-secondary); font-size: 12px; line-height: 1.65; overflow-wrap: anywhere; }
+.training-preview-row b { color: var(--text-primary); }
+.training-upload-submit { width: 100%; min-height: 44px; margin-top: 14px; font-family: inherit; }
+.training-upload-submit:disabled { opacity: .5; cursor: not-allowed; }
+.training-upload-result { max-width: 1220px; margin: 14px auto 28px; padding: 15px 17px; border: 1px solid var(--border); border-inline-start: 3px solid var(--accent); border-radius: var(--radius); background: var(--bg-secondary); }
+.training-upload-result.warning { border-inline-start-color: var(--warning); }
+.training-upload-result strong { color: var(--text-primary); }
+.training-upload-result p { margin: 6px 0 0; color: var(--text-secondary); font-size: 12px; line-height: 1.7; overflow-wrap: anywhere; }
+.training-upload-result code { direction: ltr; unicode-bidi: plaintext; }
+.training-upload-result a { display: inline-block; margin-top: 8px; color: var(--accent); font-size: 12px; }
 .training-file-button { position: relative; display: inline-flex; align-items: center; justify-content: center; min-height: 40px; margin-top: 4px; padding: 8px 16px; overflow: hidden; border-radius: var(--radius-sm); color: var(--bg-primary); background: var(--accent); font-weight: 700; cursor: pointer; }
 .training-file-button input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: .01; cursor: pointer; }
 .training-source-actions { display: grid; justify-items: start; gap: 12px; margin-top: 14px; }
@@ -1681,6 +1702,7 @@ body {
   .training-header { grid-template-columns: 1fr; align-items: stretch; gap: 14px; }
   .training-panel-heading { flex-direction: column; }
   .training-stat { align-self: flex-start; }
+  .training-preview-row { padding: 8px; }
   .training-review-footer { align-items: stretch; flex-direction: column; }
   .training-review-footer .btn-primary { justify-content: center; }
   .training-next-actions { display: grid; grid-template-columns: 1fr; }

@@ -81,14 +81,14 @@ ZAZO_WEB_UI_URL="$PAGES_UI_URL" \
 
 - **المحادثة** تحفظ الرسائل عبر Worker في Neon، بينما تستخدم KV للسياق النشط وأرشيفات JSONL.
 - **الإدخال الصوتي** يستخدم Web Speech API من زر الميكروفون داخل المحادثة، ثم يحفظ النص الناتج كمصدر `text`.
-- **محلل البيانات** يقبل `JSON`, `JSONL/NDJSON`, `CSV`, `TSV`, `Markdown` و`TXT`. يعرض معاينة قبل الحفظ ويحوّل الحقول الشائعة (`prompt/input/question` و`response/output/answer`) إلى `instruction/context/response`.
-- كل سجل مستورد يحمل `metadata` تتضمن اسم المصدر ورقم الصف وحالة `needs_review`. السجلات التي لا تحتوي استجابة لا تُفقد، لكنها تظهر كمحتوى يحتاج مراجعة قبل تصدير JSONL للتدريب.
+- **رفع ملف التدريب** يقبل ملفات جاهزة `JSON`, `JSONL/NDJSON`, `CSV` و`TSV` فقط؛ الحقول المدعومة تشمل `instruction/question` و`response/answer`، كما تُقرأ أزواج ShareGPT ذات `messages`. لا يُرسل نص الكتب أو الملف إلى Raqa ولا تُنشأ أسئلة آليًا.
+- الرفع محمي عبر Cloudflare Access، ويضع نسخة الملف الأصلية في `ARCHIVE_STORE` تحت اسم دفعة فريد، ويضيف أمثلة عربية مكتملة إلى Neon ببيانات المصدر؛ ثم ينفذ `exportDataset` فورًا لتحديث `exports/zazo-rag-prepared/latest.json`. حد الملف 8 MiB و1000 مثال، ويجب أن تكون الحقول نصوصًا عربية مكتملة.
 
 ### تدريب ورفع Zazo Brain
 
 دفتر [zazo_brain_gemma_cloudflare_training.ipynb](colab/zazo_brain_gemma_cloudflare_training.ipynb) هو الدفتر الموحد للمشروع. يتبع أحدث manifest في `exports/zazo-rag-prepared/latest.json` ويقرأ `readyChunkKeys` فقط؛ ويتحقق من حداثة التصدير وعدد الصفوف وبصمة محتوى البيانات حتى لا يبدأ التدريب على مجموعة قديمة أو فارغة. بعد التدريب، يحفظ كل إصدار في مجلد مستقل على Google Drive ثم يرفع مباشرةً إلى Cloudflare AI؛ لا يمر الرفع عبر حد Worker البالغ 80 MiB. يتطلب GPU متصلًا فعليًا في Colab وقبول شروط Gemma على Hugging Face؛ CPU أو TPU لا يعملان مع هذه النسخة.
 
-أضف `CF_KV_TOKEN` و`CF_AI_TOKEN`، و`HF_TOKEN` عند الحاجة، مرة واحدة في **Colab Secrets**؛ لا تضع قيمها في الدفتر أو Drive أو Git. بعد نجاح الرفع يحدّث الدفتر المفتاح `active-lora` في namespace `ACTIVE_CONTEXT`. يقرأ Worker هذا المؤشر عند كل طلب شات مع الرجوع إلى `CLOUDFLARE_LORA_ID` إن لم يوجد، لذلك لا يلزم تعديل إعداد Worker أو إعادة نشره بعد كل تدريب (يلزم نشر تعديل قراءة KV أول مرة). صفحة الإدارة ما زالت متاحة للرفع اليدوي عبر Cloudflare Access بحدها الحالي الأقل من 80 MiB. يحتفظ Cloudflare بحد معلن قدره 100 محوّل لكل حساب خلال البيتا؛ يحذّر الدفتر عند 80 ويتوقف عند 95 دون حذف تلقائي. تُستخدم Raqa لتنقية المحتوى واستخراجه، ولا ينشئ الـGitHub Action أوزانًا بنفسه.
+أضف `CF_KV_TOKEN` و`CF_AI_TOKEN`، و`HF_TOKEN` عند الحاجة، مرة واحدة في **Colab Secrets**؛ لا تضع قيمها في الدفتر أو Drive أو Git. بعد نجاح تدريب الرفع يحدّث الدفتر المفتاح `active-lora` في namespace `ACTIVE_CONTEXT`. يقرأ Worker هذا المؤشر عند كل طلب شات مع الرجوع إلى `CLOUDFLARE_LORA_ID` إن لم يوجد، لذلك لا يلزم تعديل إعداد Worker أو إعادة نشره بعد كل تدريب (يلزم نشر تعديل قراءة KV أول مرة). صفحة رفع LoRA ما زالت متاحة عبر Cloudflare Access بحدها الحالي الأقل من 80 MiB. يحتفظ Cloudflare بحد معلن قدره 100 محوّل لكل حساب خلال البيتا؛ يحذّر الدفتر عند 80 ويتوقف عند 95 دون حذف تلقائي. لا ينشئ الـGitHub Action أوزانًا بنفسه.
 
 ### إعداد التخزين
 

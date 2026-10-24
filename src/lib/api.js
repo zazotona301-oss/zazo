@@ -200,6 +200,29 @@ export async function requestAssistantResponse({ conversationId, messages }) {
   })
 }
 
+export async function uploadTrainingDataset({ file, uploadId, worldId }) {
+  const formData = new FormData()
+  formData.append('file', file, file.name)
+  formData.append('uploadId', uploadId)
+  if (worldId) formData.append('worldId', worldId)
+  let response
+  try {
+    response = await fetch('/api/admin/training-upload', { method: 'POST', body: formData })
+  } catch (error) {
+    const reason = error instanceof Error && error.message ? error.message : 'خطأ شبكة غير معروف'
+    throw new Error(`تعذر الاتصال بخدمة رفع التدريب: ${reason}`)
+  }
+  const isJson = response.headers.get('content-type')?.includes('application/json')
+  const payload = isJson ? await response.json().catch(() => ({})) : {}
+  if (!isJson) throw new Error('لم يكتمل تسجيل الدخول إلى Cloudflare Access. سجّل الدخول ثم أعد الرفع.')
+  if (!response.ok) {
+    const rowDetails = Array.isArray(payload.invalidRows) ? ` الصفوف: ${payload.invalidRows.join('، ')}.` : ''
+    throw new Error(`${payload.message || payload.error || `فشل رفع الملف (${response.status})`}${rowDetails}`)
+  }
+  if (!payload.success) throw new Error(payload.message || 'لم يؤكد الخادم نجاح رفع ملف التدريب')
+  return payload
+}
+
 export async function uploadLoraAdapter({ configFile, weightsFile, fineTuneName }) {
   const formData = new FormData()
   formData.append('adapter_config', configFile, 'adapter_config.json')

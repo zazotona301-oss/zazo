@@ -1,18 +1,17 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { IconBrain, IconClose, IconDownload, IconSave, IconUpload } from './Icons'
+import { IconBrain, IconDownload, IconUpload } from './Icons'
 import {
-  addKnowledgeEntry,
-  analyzeIntellectualText,
   downloadJSONL,
   fetchKnowledgeEntries,
   fetchWorlds,
+  uploadTrainingDataset,
 } from '../lib/api'
-import { extractFileText } from '../lib/fileExtractor'
 import { parseTrainingSource } from '../lib/dataParser'
 
 const STRUCTURED_EXTENSIONS = new Set(['json', 'jsonl', 'ndjson', 'csv', 'tsv'])
-const ACCEPTED_FILES = '.pdf,.docx,.epub,.txt,.md,.markdown,.html,.htm,.json,.jsonl,.ndjson,.csv,.tsv'
-const MAX_ANALYSIS_CHARS = 80_000
+const ACCEPTED_FILES = '.json,.jsonl,.ndjson,.csv,.tsv'
+const MAX_TRAINING_FILE_BYTES = 8 * 1024 * 1024
+const MAX_TRAINING_ROWS = 1_000
 const ARABIC_CHARACTER = /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF]/
 const LETTER_CHARACTER = /\p{L}/u
 const WORKFLOW_URL = 'https://github.com/zazotona301-oss/zazo-brain-backend/actions/workflows/rag-dataset-prep.yml'
@@ -23,14 +22,13 @@ export default function TrainingView({ onToast, onNavigate }) {
   const [selectedWorldId, setSelectedWorldId] = useState('')
   const [entries, setEntries] = useState([])
   const [loading, setLoading] = useState(true)
+  const [selectedFile, setSelectedFile] = useState(null)
   const [sourceName, setSourceName] = useState('')
-  const [rawText, setRawText] = useState('')
-  const [sourceMode, setSourceMode] = useState('')
-  const [candidates, setCandidates] = useState([])
-  const [analysisBusy, setAnalysisBusy] = useState(false)
-  const [analysisProgress, setAnalysisProgress] = useState('')
-  const [saveBusy, setSaveBusy] = useState(false)
-  const [saveProgress, setSaveProgress] = useState('')
+  const [uploadId, setUploadId] = useState('')
+  const [records, setRecords] = useState([])
+  const [parseError, setParseError] = useState('')
+  const [uploadBusy, setUploadBusy] = useState(false)
+  const [uploadResult, setUploadResult] = useState(null)
   const toastRef = useRef(onToast)
   toastRef.current = onToast
 
@@ -44,162 +42,98 @@ export default function TrainingView({ onToast, onNavigate }) {
         const preferredWorld = loadedWorlds.find((world) => world.slug === 'World_Religion_Philosophy') || loadedWorlds[0]
         if (preferredWorld) setSelectedWorldId(preferredWorld.id)
       })
-      .catch(() => {
-        if (active) toastRef.current('تعذر تحميل العوالم أو سجلات التدريب', true)
-      })
+      .catch(() => { if (active) toastRef.current('تعذر تحميل العوالم أو سجلات التدريب', true) })
       .finally(() => { if (active) setLoading(false) })
     return () => { active = false }
   }, [])
 
-  const selectedWorld = worlds.find((world) => world.id === selectedWorldId)
   const arabicTrainingEntries = useMemo(() => entries.filter((entry) => (
     entry.metadata?.training_language === 'ar'
       && entry.metadata?.needs_review !== true
       && isArabicTrainingExample(entry)
   )), [entries])
-  const selectedCount = candidates.filter((item) => item.selected && !candidateIssue(item)).length
+  const invalidRecords = useMemo(() => records
+    .map((record, index) => ({ record, index, issue: candidateIssue(record) }))
+    .filter((item) => item.issue), [records])
+  const previewRecords = records.slice(0, 10)
+  const validUpload = Boolean(selectedFile && records.length && !parseError && !invalidRecords.length && uploadId)
 
   async function handleFile(file) {
-    if (!file) return
-    try {
-      const text = await extractFileText(file)
-      if (!text.trim()) throw new Error('لم يُعثر على نص قابل للاستخراج من الملف')
-      setSourceMode('')
-      setSourceName(file.name)
-      setRawText(text)
-      setCandidates([])
-      const extension = file.name.toLowerCase().split('.').pop()
-      if (STRUCTURED_EXTENSIONS.has(extension)) {
-        const records = parseTrainingSource(text, file.name)
-        setCandidates(records.map((record, index) => toCandidate(record, index, file.name)))
-        setSourceMode('structured')
-        onToast(`قُرئ ${records.length} سجل من الملف. راجع الصياغة العربية وحدد الأمثلة التي تريد اعتمادها.`)
-      } else {
-        setSourceMode('document')
-        onToast(`تم استخراج ${text.length.toLocaleString('ar-EG')} حرفًا من ${file.name}. حوّله الآن إلى أمثلة عربية مقترحة.`)
-      }
-    } catch (error) {
-      setSourceMode('')
-      onToast(error?.message || 'تعذرت قراءة الملف أو الصيغة غير مدعومة', true)
-    }
-  }
-
-  async function handleAnalyzeSource() {
-    if (!rawText.trim()) return onToast('ارفع مادة أولًا لاستخراج النص', true)
-    const chunks = splitSourceForAnalysis(rawText, MAX_ANALYSIS_CHARS)
-    if (!chunks.length) return onToast('لم يتبق نص صالح للتحليل', true)
-    setAnalysisBusy(true)
-    setCandidates([])
-    const generated = []
-    try {
-      for (let chunkIndex = 0; chunkIndex < chunks.length; chunkIndex += 1) {
-        setAnalysisProgress(`يحلل Raqa الجزء ${chunkIndex + 1} من ${chunks.length}…`)
-        const result = await analyzeIntellectualText(chunks[chunkIndex], {
-          title: `${sourceName || 'مادة تدريب'} — الجزء ${chunkIndex + 1}`,
-          category: selectedWorld?.name || 'معرفة عامة',
-        })
-        const nodes = Array.isArray(result.extracted_nodes) ? result.extracted_nodes : []
-        nodes.forEach((node, nodeIndex) => {
-          const title = cleanText(node?.concept_title)
-          const summary = cleanText(node?.core_summary)
-          const takeaway = cleanText(node?.key_takeaway)
-          const response = [summary, takeaway].filter(Boolean).join('\n\n')
-          if (!response) return
-          generated.push({
-            id: `raqa-${chunkIndex}-${nodeIndex}-${Date.now()}`,
-            instruction: title
-              ? `اشرح مفهوم «${title}» كما تعرضه المادة.`
-              : 'ما الفكرة الأساسية التي تعرضها هذه المادة؟',
-            context: '',
-            response,
-            tags: ['تدريب-عربي', ...(Array.isArray(node.tags) ? node.tags.filter((tag) => typeof tag === 'string') : [])],
-            selected: false,
-            source_name: sourceName,
-          })
-        })
-      }
-      setCandidates(generated)
-      setSourceMode('generated')
-      if (generated.length) {
-        onToast(`أنشأ Raqa ${generated.length} اقتراحًا. راجع كل سؤال وإجابة واعتمد ما تثق بدقته فقط.`)
-      } else {
-        onToast('لم ينتج المحلل أمثلة قابلة للاعتماد من هذه المادة', true)
-      }
-    } catch (error) {
-      onToast(error?.message || 'تعذر تحليل المادة؛ لم تُحفظ أمثلة جزئية', true)
-    } finally {
-      setAnalysisBusy(false)
-      setAnalysisProgress('')
-    }
-  }
-
-  function updateCandidate(id, patch) {
-    setCandidates((current) => current.map((item) => item.id === id ? { ...item, ...patch } : item))
-  }
-
-  function selectAllValid() {
-    setCandidates((current) => current.map((item) => ({ ...item, selected: !candidateIssue(item) })))
-  }
-
-  async function handleSaveApproved() {
-    const approved = candidates.filter((item) => item.selected && !candidateIssue(item))
-    if (!approved.length) return onToast('حدد مثالًا واحدًا على الأقل بعد التأكد من السؤال والإجابة بالعربية', true)
-    setSaveBusy(true)
-    const savedRows = []
-    try {
-      for (let start = 0; start < approved.length; start += 10) {
-        const batch = approved.slice(start, start + 10)
-        setSaveProgress(`حفظ ${Math.min(start + batch.length, approved.length)} من ${approved.length}…`)
-        const payloads = batch.map((item) => ({
-          instruction: item.instruction.trim(),
-          context: item.context.trim(),
-          response: item.response.trim(),
-          worldId: selectedWorldId || undefined,
-          tags: [...new Set(['تدريب-عربي', ...(item.tags || [])])],
-          source_name: item.source_name || sourceName || 'manual-arabic-training',
-          metadata: {
-            ingestion: 'arabic_training_portal',
-            training_language: 'ar',
-            needs_review: false,
-            arabic_reviewed: true,
-            approved_at: new Date().toISOString(),
-          },
-        }))
-        const settled = await Promise.allSettled(payloads.map((payload) => addKnowledgeEntry(payload)))
-        const succeeded = settled.flatMap((result, index) => result.status === 'fulfilled'
-          ? [{ memory: result.value, candidateId: batch[index].id }]
-          : [])
-        const failed = settled.filter((result) => result.status === 'rejected')
-        const savedCandidateIds = new Set(succeeded.map((item) => item.candidateId))
-        const result = succeeded.map((item) => item.memory)
-        savedRows.push(...result)
-        if (result.length) {
-          setCandidates((current) => current.filter((item) => !savedCandidateIds.has(item.id)))
-          setEntries((current) => [...result, ...current])
-        }
-        if (failed.length) {
-          const reason = failed[0].reason?.message || 'فشل اتصال ببعض السجلات'
-          onToast(`تم حفظ ${savedRows.length} مثالًا؛ تعذر حفظ ${failed.length} في هذه الدفعة، وقد بقيت للمراجعة وإعادة المحاولة. ${reason}`, true)
-          return
-        }
-      }
-      const pending = savedRows.filter((item) => item.offline || item.kvArchived === false).length
-      onToast(pending
-        ? `أُضيف ${savedRows.length} مثالًا؛ ${pending} بانتظار المزامنة/تعذر أرشفته في KV`
-        : `تم اعتماد وحفظ ${savedRows.length} مثال عربي في Neon وKV`)
-    } catch (error) {
-      onToast(error?.message || `حُفظ ${savedRows.length} مثالًا قبل تعطل بقية الدفعة`, true)
-    } finally {
-      setSaveBusy(false)
-      setSaveProgress('')
-    }
-  }
-
-  function resetSource() {
+    setSelectedFile(null)
     setSourceName('')
-    setRawText('')
-    setSourceMode('')
-    setCandidates([])
+    setUploadId('')
+    setRecords([])
+    setParseError('')
+    setUploadResult(null)
+    if (!file) return
+
+    const extension = file.name.toLowerCase().split('.').pop()
+    if (!STRUCTURED_EXTENSIONS.has(extension)) {
+      const message = 'ارفع ملف تدريب جاهزًا بصيغة JSON أو JSONL أو NDJSON أو CSV أو TSV. لا تُحوّل هذه الصفحة الكتب أو النص الخام إلى أسئلة.'
+      setParseError(message)
+      onToast(message, true)
+      return
+    }
+    if (file.size < 1 || file.size > MAX_TRAINING_FILE_BYTES) {
+      const message = 'يجب أن يكون الملف بين بايت واحد و8 MiB؛ قسّم البيانات الأكبر على ملفات متعددة.'
+      setParseError(message)
+      onToast(message, true)
+      return
+    }
+
+    try {
+      const parsed = parseTrainingSource(await file.text(), file.name)
+      if (!parsed.length) throw new Error('لم يُعثر على سجلات تدريب في الملف')
+      if (parsed.length > MAX_TRAINING_ROWS) throw new Error(`الحد الأعلى ${MAX_TRAINING_ROWS} مثال لكل ملف؛ قسّم الملف ثم ارفع الأجزاء`)
+      const prepared = parsed.map((record, index) => toPreviewRecord(record, index, file.name))
+      setSelectedFile(file)
+      setSourceName(file.name)
+      setRecords(prepared)
+      setUploadId(crypto.randomUUID())
+      if (prepared.some(candidateIssue)) {
+        setParseError('يحتوي الملف صفوفًا ناقصة أو غير عربية. أصلح الصفوف المعروضة في الملف ثم أعد اختياره؛ لن يُرفع أي صف جزئيًا.')
+      }
+      onToast(`قُرئ ${prepared.length} سجل كما هو. لا يوجد توليد أو إعادة صياغة عبر Raqa؛ راجع المعاينة ثم ارفع الملف.`)
+    } catch (error) {
+      const message = error?.message || 'تعذر قراءة صيغة الملف'
+      setParseError(message)
+      onToast(message, true)
+    }
+  }
+
+  async function handleUpload() {
+    if (!validUpload) return onToast('اختر ملفًا منظمًا مكتملًا بالعربية قبل الرفع', true)
+    setUploadBusy(true)
+    setUploadResult(null)
+    try {
+      const result = await uploadTrainingDataset({ file: selectedFile, uploadId, worldId: selectedWorldId })
+      setUploadResult(result)
+      setRecords([])
+      setSelectedFile(null)
+      setSourceName('')
+      setUploadId('')
+      if (fileRef.current) fileRef.current.value = ''
+      const refreshedEntries = await fetchKnowledgeEntries().catch(() => null)
+      if (refreshedEntries) setEntries(refreshedEntries)
+      if (result.exportUpdated) {
+        onToast(`تم رفع ${result.importedRows} مثال. الدفعة ${result.uploadName}؛ حُدّث ملف التدريب الذي يقرأه دفتر Colab.`)
+      } else {
+        onToast('حُفظ الملف والأمثلة، لكن تعذر تحديث latest.json. لا تعِد رفع الملف؛ شغّل Workflow تجهيز البيانات لإعادة التصدير.', true)
+      }
+    } catch (error) {
+      onToast(error?.message || 'تعذر رفع ملف التدريب؛ لم يؤكد الخادم حفظه', true)
+    } finally {
+      setUploadBusy(false)
+    }
+  }
+
+  function resetUpload() {
+    setSelectedFile(null)
+    setSourceName('')
+    setUploadId('')
+    setRecords([])
+    setParseError('')
+    setUploadResult(null)
     if (fileRef.current) fileRef.current.value = ''
   }
 
@@ -207,9 +141,9 @@ export default function TrainingView({ onToast, onNavigate }) {
     <section className="training-page" dir="rtl">
       <header className="training-header">
         <div>
-          <p className="training-eyebrow">ZAZO BRAIN · ARABIC DATASET · GOOGLE COLAB GPU</p>
-          <h2>تجهيز التدريب العربي</h2>
-          <p>ارفع مادة علمية، استخرج منها أمثلة عربية مقترحة، راجعها واعتمدها. تُحفظ الأمثلة المعتمدة في Neon وتُؤرشف في KV لتجهيزها لدفتر Colab.</p>
+          <p className="training-eyebrow">ZAZO BRAIN · READY DATASET · GOOGLE COLAB</p>
+          <h2>رفع ملف التدريب</h2>
+          <p>ارفع ملف Q&A عربيًا جاهزًا كما هو. تُحفظ النسخة الأصلية في KV، وتُضاف الأمثلة إلى Neon، ثم يُحدّث ملف latest الذي يسحبه دفتر Colab.</p>
         </div>
         <label className="training-world-select">
           <span>مجال المعرفة</span>
@@ -223,54 +157,70 @@ export default function TrainingView({ onToast, onNavigate }) {
       <div className="training-guide-grid">
         <article className="training-guide-card">
           <span className="training-guide-number">١</span>
-          <div><strong>ارفع المادة</strong><p>كتاب أو ملف مصدر. PDF وDOCX وEPUB وTXT وMarkdown، أو ملف منظم JSON/JSONL/CSV/TSV.</p></div>
+          <div><strong>جهّز ملفًا منظمًا</strong><p>JSON أو JSONL أو NDJSON أو CSV أو TSV، وفي كل مثال سؤال وإجابة عربية مكتملان.</p></div>
         </article>
         <article className="training-guide-card">
           <span className="training-guide-number">٢</span>
-          <div><strong>راجع أمثلة Q&A العربية</strong><p>المادة الكاملة تصلح للمعرفة وRAG؛ أما الأوزان فتحتاج سؤالًا وإجابةً عربيين موثوقين لكل مثال.</p></div>
+          <div><strong>ارفعه مباشرةً</strong><p>لا ينشئ الموقع أسئلة أو محادثات عبر Raqa. يتحقق الخادم من السجلات ويعطي كل رفع اسمًا فريدًا.</p></div>
         </article>
         <article className="training-guide-card">
           <span className="training-guide-number">٣</span>
-          <div><strong>درّب من Colab</strong><p>بعد تجهيز البيانات، شغّل دفتر Colab الحالي على GPU ثم ارفع ملفي LoRA من صفحة رفع الأوزان.</p></div>
+          <div><strong>تابع في Colab</strong><p>بعد تأكيد تحديث manifest، افتح الدفتر الموحد وشغّل التدريب على البيانات الجديدة.</p></div>
         </article>
       </div>
 
       <div className="training-notice">
         <IconBrain />
-        <div><strong>لا يُدرّب الملف الخام مباشرةً</strong><p>يحلل Raqa المادة لاستخراج اقتراحات، لكنه لا يرد على الشات. الملف الأصلي لا يُخزَّن من هذه الصفحة؛ الذي يُحفظ في Neon/KV هو أمثلة السؤال والجواب التي تعتمدها. إذا أردت استخدام الكتاب كاملًا في RAG فارفعه أيضًا من «قاعدة المعرفة». لن يبدأ GPU أو إنشاء الأوزان من هنا؛ التدريب الفعلي يبقى في Google Colab.</p></div>
+        <div><strong>يُرفع الملف كما أعددته — لا تحويل بالذكاء الاصطناعي</strong><p>الصيغ المقبولة تحتوي أعمدة أو حقولًا مثل instruction/question وresponse/answer، أو رسائل ShareGPT. يجب أن يكون السؤال والإجابة والسياق عربيًا. لا تقبل هذه الصفحة كتب PDF أو النص الخام؛ لا يمكن إدخالها في تدريب Q&A مباشرةً دون إعداد أمثلة.</p></div>
       </div>
 
       <div className="training-workspace">
         <section className="training-panel">
-          <div className="training-panel-heading"><div><h3>١. رفع مادة التدريب</h3><p>الملف يُقرأ في المتصفح؛ عند طلب التحليل يُرسل النص المستخرج إلى مسار Raqa الحالي.</p></div><span className="training-stat">{arabicTrainingEntries.length} مثالًا عربيًا جاهزًا ضمن آخر 100 سجل محمّل</span></div>
+          <div className="training-panel-heading">
+            <div><h3>١. اختيار ملف التدريب</h3><p>الحد 8 MiB و1000 مثال لكل ملف. سيُخزّن الملف الأصلي في KV لمدة 31 يومًا، وتبقى أمثلته في Neon.</p></div>
+            <span className="training-stat">{arabicTrainingEntries.length} مثالًا عربيًا جاهزًا ضمن آخر 100 سجل محمّل</span>
+          </div>
+          <div className="training-access-box">
+            <strong>الرفع محمي عبر Cloudflare Access</strong>
+            <p>سجّل الدخول بالبريد الإداري المصرح به، ثم ارجع إلى هذه الصفحة وأكمل الرفع.</p>
+            <a className="btn-secondary" href="/api/admin/access-login" target="_blank" rel="noopener noreferrer">تسجيل الدخول إلى Cloudflare Access</a>
+          </div>
           <div className="training-upload-box">
             <IconUpload size={22} />
-            <strong>{sourceName || 'اختر كتابًا أو ملف بيانات'}</strong>
-            <small>{rawText ? `${rawText.length.toLocaleString('ar-EG')} حرف مستخرج` : 'اختر ملف مصدر أو ملف JSONL بأسئلة وأجوبة'}</small>
+            <strong>{sourceName || 'اختر ملف Q&A جاهزًا'}</strong>
+            <small>{selectedFile ? `${(selectedFile.size / (1024 * 1024)).toFixed(2)} MiB · ${records.length} مثالًا مقروءًا` : 'JSON · JSONL · NDJSON · CSV · TSV'}</small>
             <label className="training-file-button">
               {sourceName ? 'اختيار ملف آخر' : 'اختيار ملف'}
               <input ref={fileRef} type="file" accept={ACCEPTED_FILES} onChange={(event) => handleFile(event.target.files?.[0])} />
             </label>
-            {sourceName && <button className="training-text-button" type="button" disabled={analysisBusy || saveBusy} onClick={resetSource}><IconClose size={14} /> إزالة الملف</button>}
+            {(sourceName || parseError) && <button className="training-text-button" type="button" disabled={uploadBusy} onClick={resetUpload}>إزالة الملف</button>}
           </div>
-
-          {sourceMode === 'document' && <div className="training-source-actions">
-            <p>تم استخراج النص. اضغط التحليل لإنشاء أسئلة وإجابات عربية مقترحة على دفعات؛ ستبقى للمراجعة ولن تدخل التدريب قبل اعتمادك.</p>
-            <button className="btn-primary" type="button" onClick={handleAnalyzeSource} disabled={analysisBusy}>
-              {analysisBusy ? analysisProgress || 'جارٍ التحليل…' : 'تحليل المادة وإنشاء أمثلة عربية'}
-            </button>
+          {parseError && <p className="training-upload-error" role="alert">{parseError}</p>}
+          {invalidRecords.length > 0 && <ul className="training-invalid-rows">{invalidRecords.slice(0, 20).map(({ record, index, issue }) => <li key={`${record.source_name}-${index}`}>المثال {record.source_row || index + 1}: {issue}</li>)}</ul>}
+          {records.length > 0 && !parseError && <div className="training-preview-summary">
+            <strong>معاينة {previewRecords.length} من {records.length} مثالًا — المحتوى لم يُعدّل</strong>
+            <div className="training-preview-list">
+              {previewRecords.map((record, index) => <article className="training-preview-row" key={`${record.source_row}-${index}`}>
+                <span>مثال {index + 1}</span>
+                <p><b>السؤال:</b> {record.instruction}</p>
+                {record.context && <p><b>السياق:</b> {record.context}</p>}
+                <p><b>الإجابة:</b> {record.response}</p>
+              </article>)}
+            </div>
           </div>}
-          {sourceMode === 'structured' && <div className="training-source-actions"><p>حُمّلت سجلات منظمة؛ راجع اكتمال السؤال والإجابة والعربية قبل اعتماد أي سجل.</p></div>}
           {loading && <p className="training-loading">جارٍ تحميل بيانات Neon…</p>}
+          <button className="btn-primary training-upload-submit" type="button" onClick={handleUpload} disabled={uploadBusy || !validUpload}>
+            {uploadBusy ? 'جارٍ رفع الملف وتحديث manifest…' : `رفع ${records.length || ''} مثال إلى مجموعة التدريب`}
+          </button>
         </section>
 
         <section className="training-panel training-next-panel">
-          <div className="training-panel-heading"><div><h3>٢. تجهيز البيانات وتدريب الأوزان</h3><p>التصدير اليومي يجهز أمثلتك المعتمدة في KV. زر GitHub يفتح تشغيلًا يدويًا فوريًا.</p></div></div>
+          <div className="training-panel-heading"><div><h3>٢. التدريب على البيانات المرفوعة</h3><p>كل رفع جديد ينشئ نسخة باسم مختلف ويحدّث نقطة latest مباشرةً عند نجاح التصدير.</p></div></div>
           <ol className="training-next-steps">
-            <li><strong>اعتمد الأمثلة العربية</strong><span>تُحفظ في Neon وتُنسخ إلى KV.</span></li>
-            <li><strong>جهّز مجموعة Colab</strong><span>شغّل Workflow «Prepare Zazo RAG dataset» يدويًا.</span></li>
-            <li><strong>درّب على GPU</strong><span>افتح دفتر Colab الحالي، اختر GPU، ثم شغّل خلاياه.</span></li>
-            <li><strong>ارفع المحول</strong><span>بعد انتهاء التدريب، استخدم صفحة رفع LoRA الحالية.</span></li>
+            <li><strong>تأكيد الرفع</strong><span>الاستجابة تعرض اسم الدفعة وعدد السجلات ومفتاح manifest.</span></li>
+            <li><strong>فتح دفتر Colab الموحد</strong><span>يسحب أحدث manifest ثم readyChunkKeys فقط.</span></li>
+            <li><strong>تشغيل التدريب على GPU</strong><span>لا يرسل الدفتر الملف إلى Raqa ولا ينشئ أمثلة من تلقاء نفسه.</span></li>
+            <li><strong>رفع الأوزان بعد التدريب</strong><span>استخدم صفحة رفع LoRA لتفعيل المحوّل.</span></li>
           </ol>
           <div className="training-next-actions">
             <a className="training-action-link" href={WORKFLOW_URL} target="_blank" rel="noopener noreferrer">فتح Workflow تجهيز البيانات</a>
@@ -278,42 +228,29 @@ export default function TrainingView({ onToast, onNavigate }) {
             <button className="training-action-link secondary" type="button" onClick={() => onNavigate?.('lora-upload')}>الانتقال إلى رفع الأوزان</button>
             <button className="training-action-link secondary" type="button" onClick={() => downloadJSONL(arabicTrainingEntries, 'zazo_arabic_training.jsonl')} disabled={!arabicTrainingEntries.length}><IconDownload size={15} /> تنزيل أمثلة آخر 100 سجل محمّل</button>
           </div>
-          <small className="training-colab-note">GitHub Action يجهّز البيانات فقط ولا يدرّب. Colab هو الذي ينشئ أوزان LoRA على GPU، ثم تُرفع الأوزان إلى Cloudflare من الصفحة الموجودة.</small>
+          <small className="training-colab-note">مسار الرفع المباشر يحدّث manifest بنفسه؛ شغّل Workflow يدويًا فقط إذا أبلغت الصفحة عن تعذّر تحديث latest.json.</small>
         </section>
       </div>
 
-      {candidates.length > 0 && <section className="training-review-panel">
-        <div className="training-panel-heading training-review-heading"><div><h3>٣. مراجعة الأمثلة المقترحة</h3><p>{candidates.length} مثالًا من «{sourceName || 'الملف'}» — لا تعتمد إلا ما يطابق المصدر.</p></div><button className="training-text-button" type="button" onClick={selectAllValid}>تحديد الأمثلة الصالحة</button></div>
-        <div className="training-candidate-list">
-          {candidates.map((item, index) => {
-            const issue = candidateIssue(item)
-            return <article className={`training-candidate ${item.selected ? 'selected' : ''}`} key={item.id}>
-              <div className="training-candidate-top">
-                <label className="training-approve-toggle"><input type="checkbox" checked={item.selected} disabled={Boolean(issue)} onChange={(event) => updateCandidate(item.id, { selected: event.target.checked })} /><span>اعتماد المثال</span></label>
-                <span className={`training-validation ${issue ? 'warning' : 'valid'}`}>{issue || 'سؤال وجواب عربيان'}</span>
-                <span className="training-candidate-number">مثال {index + 1}</span>
-              </div>
-              <label className="training-edit-field"><span>السؤال / Instruction</span><textarea value={item.instruction} onChange={(event) => updateCandidate(item.id, { instruction: event.target.value, selected: false })} rows={2} /></label>
-              <label className="training-edit-field"><span>السياق العربي (اختياري)</span><textarea value={item.context} onChange={(event) => updateCandidate(item.id, { context: event.target.value, selected: false })} rows={2} /></label>
-              <label className="training-edit-field"><span>الإجابة / Response</span><textarea value={item.response} onChange={(event) => updateCandidate(item.id, { response: event.target.value, selected: false })} rows={3} /></label>
-            </article>
-          })}
-        </div>
-        <div className="training-review-footer"><span>{selectedCount} محدد للاعتماد</span><button className="btn-primary" type="button" onClick={handleSaveApproved} disabled={saveBusy || selectedCount === 0}><IconSave size={16} />{saveBusy ? saveProgress || 'جارٍ الحفظ…' : `اعتماد وحفظ ${selectedCount} مثالًا في Neon وKV`}</button></div>
+      {uploadResult && <section className={`training-upload-result ${uploadResult.exportUpdated ? 'success' : 'warning'}`} role="status">
+        <strong>{uploadResult.exportUpdated ? 'تم رفع ملف التدريب وتحديث مجموعة Colab' : 'حُفظ الملف لكن لم يتحدث manifest'}</strong>
+        <p>اسم الدفعة: <code>{uploadResult.uploadName}</code></p>
+        <p>السجلات: {uploadResult.importedRows} · مفتاح الملف الأصلي: <code>{uploadResult.sourceFileKey}</code></p>
+        {uploadResult.latestManifestKey && <p>أحدث manifest: <code>{uploadResult.latestManifestKey}</code> · أمثلة جاهزة: {uploadResult.readyRows}</p>}
+        {!uploadResult.exportUpdated && <a href={WORKFLOW_URL} target="_blank" rel="noopener noreferrer">إعادة تشغيل Workflow تجهيز البيانات</a>}
       </section>}
     </section>
   )
 }
 
-function toCandidate(record, index, sourceName) {
+function toPreviewRecord(record, index, sourceName) {
   return {
-    id: `file-${index}-${Date.now()}`,
     instruction: cleanText(record.instruction),
     context: cleanText(record.context),
     response: cleanText(record.response),
     tags: Array.isArray(record.tags) ? record.tags : [],
-    selected: false,
-    source_name: sourceName || 'uploaded-training-file',
+    source_row: Number(record.metadata?.source_row) || index + 1,
+    source_name: sourceName,
   }
 }
 
@@ -336,42 +273,10 @@ function isArabicTrainingExample(item) {
 }
 
 function candidateIssue(item) {
-  if (!item.instruction?.trim()) return 'اكتب سؤالًا أو تعليمة'
-  if (!item.response?.trim()) return 'اكتب إجابة موثوقة'
-  if (item.instruction.length > 100_000 || item.response.length > 100_000 || (item.context || '').length > 100_000) return 'قلّص هذا المثال إلى أقل من 100 ألف حرف لكل حقل'
-  if (!isArabicText(item.instruction) || !isArabicText(item.response)) return 'يجب أن تكون صياغة السؤال والإجابة عربية'
-  if (item.context?.trim() && !isArabicText(item.context)) return 'اجعل السياق عربيًا أو اتركه فارغًا'
+  if (!item.instruction) return 'السؤال أو التعليمة فارغة'
+  if (!item.response) return 'الإجابة فارغة'
+  if (item.instruction.length > 20_000 || item.response.length > 20_000 || item.context.length > 20_000) return 'أحد الحقول يتجاوز 20 ألف حرف'
+  if (!isArabicText(item.instruction) || !isArabicText(item.response)) return 'يجب أن يكون السؤال والإجابة بالعربية'
+  if (item.context && !isArabicText(item.context)) return 'يجب أن يكون السياق عربيًا أو فارغًا'
   return ''
-}
-
-function splitSourceForAnalysis(text, maxChars) {
-  const units = []
-  for (const paragraph of text.split(/\n\s*\n/).map((item) => item.trim()).filter(Boolean)) {
-    if (paragraph.length <= maxChars) {
-      units.push(paragraph)
-      continue
-    }
-    let start = 0
-    while (start < paragraph.length) {
-      let end = Math.min(start + maxChars, paragraph.length)
-      if (end < paragraph.length) {
-        const boundary = paragraph.lastIndexOf(' ', end)
-        if (boundary > start + Math.floor(maxChars * 0.65)) end = boundary
-      }
-      units.push(paragraph.slice(start, end).trim())
-      start = end
-    }
-  }
-
-  const chunks = []
-  let current = ''
-  for (const unit of units) {
-    if (current && current.length + unit.length + 2 > maxChars) {
-      chunks.push(current)
-      current = ''
-    }
-    current = current ? `${current}\n\n${unit}` : unit
-  }
-  if (current) chunks.push(current)
-  return chunks
 }

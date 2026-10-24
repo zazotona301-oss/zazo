@@ -3,12 +3,13 @@ const CONTEXT_KEYS = ['context', 'system', 'background', 'metadata', 'notes']
 const OUTPUT_KEYS = ['response', 'output', 'answer', 'completion', 'assistant', 'target', 'label']
 
 export function parseTrainingSource(text, filename = '') {
-  const sourceType = detectSourceType(filename, text)
-  if (sourceType === 'json') return normalizeJson(JSON.parse(text), filename)
-  if (sourceType === 'jsonl') return text.split(/\r?\n/).filter((line) => line.trim()).flatMap((line, index) => normalizeRecords(JSON.parse(line), filename, index + 1))
-  if (sourceType === 'csv' || sourceType === 'tsv') return parseDelimited(text, sourceType === 'tsv' ? '\t' : ',', filename)
-  if (sourceType === 'markdown') return parseMarkdown(text, filename)
-  return parsePlainText(text, filename)
+  const normalizedText = text.replace(/^\uFEFF/, '')
+  const sourceType = detectSourceType(filename, normalizedText)
+  if (sourceType === 'json') return normalizeJson(JSON.parse(normalizedText), filename)
+  if (sourceType === 'jsonl') return normalizedText.split(/\r?\n/).filter((line) => line.trim()).flatMap((line, index) => normalizeRecords(JSON.parse(line), filename, index + 1))
+  if (sourceType === 'csv' || sourceType === 'tsv') return parseDelimited(normalizedText, sourceType === 'tsv' ? '\t' : ',', filename)
+  if (sourceType === 'markdown') return parseMarkdown(normalizedText, filename)
+  return parsePlainText(normalizedText, filename)
 }
 
 export function normalizeRecord(record, sourceName = '', sourceRow = null) {
@@ -85,29 +86,46 @@ function normalizeRecords(record, sourceName, sourceRow) {
 }
 
 function parseDelimited(text, delimiter, sourceName) {
-  const rows = text.split(/\r?\n/).filter((line) => line.trim())
+  const rows = parseDelimitedRows(text, delimiter).filter((row) => row.some((value) => value.trim()))
   if (rows.length < 2) return parsePlainText(text, sourceName)
-  const headers = splitDelimitedLine(rows.shift(), delimiter).map((header) => header.trim().toLowerCase())
+  const headers = rows.shift().map((header) => header.trim().toLowerCase())
+  if (new Set(headers).size !== headers.length) throw new Error('CSV/TSV column names must be unique')
+  if (!headers.some((header) => INPUT_KEYS.includes(header)) || !headers.some((header) => OUTPUT_KEYS.includes(header))) {
+    throw new Error('CSV/TSV needs instruction/question and response/answer columns')
+  }
   return rows.map((line, index) => {
-    const values = splitDelimitedLine(line, delimiter)
+    const values = line
     const record = Object.fromEntries(headers.map((header, i) => [header, values[i] || '']))
     return normalizeRecord(record, sourceName, index + 2)
   })
 }
 
-function splitDelimitedLine(line, delimiter) {
-  const values = []
+function parseDelimitedRows(text, delimiter) {
+  const rows = []
+  let row = []
   let value = ''
   let quoted = false
-  for (let i = 0; i < line.length; i += 1) {
-    const char = line[i]
-    if (char === '"' && line[i + 1] === '"') { value += '"'; i += 1; continue }
-    if (char === '"') { quoted = !quoted; continue }
-    if (char === delimiter && !quoted) { values.push(value); value = ''; continue }
-    value += char
+  for (let index = 0; index < text.length; index += 1) {
+    const character = text[index]
+    if (character === '"') {
+      if (quoted && text[index + 1] === '"') { value += '"'; index += 1 }
+      else quoted = !quoted
+    } else if (character === delimiter && !quoted) {
+      row.push(value)
+      value = ''
+    } else if ((character === '\n' || character === '\r') && !quoted) {
+      if (character === '\r' && text[index + 1] === '\n') index += 1
+      row.push(value)
+      rows.push(row)
+      row = []
+      value = ''
+    } else {
+      value += character
+    }
   }
-  values.push(value)
-  return values
+  if (quoted) throw new Error('CSV/TSV contains an unclosed quoted field')
+  if (value || row.length) { row.push(value); rows.push(row) }
+  return rows
 }
 
 function parseMarkdown(text, sourceName) {
