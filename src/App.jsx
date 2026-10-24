@@ -4,9 +4,11 @@ import KnowledgeView from './components/KnowledgeView'
 import AnalyticsView from './components/AnalyticsView'
 import ConsciousnessView from './components/ConsciousnessView'
 import LoraUploadView from './components/LoraUploadView'
+import TrainingView from './components/TrainingView'
 import {
   IconChat,
   IconCpu,
+  IconBrain,
   IconAnalytics,
   IconPlus,
   IconTrash,
@@ -137,6 +139,15 @@ export default function App() {
             <IconAnalytics /> محرك التحليل
           </button>
           <button
+            className={`nav-item ${view === 'training' ? 'active' : ''}`}
+            onClick={() => {
+              setView('training')
+              setSidebarOpen(false)
+            }}
+          >
+            <IconBrain /> تجهيز التدريب العربي
+          </button>
+          <button
             className={`nav-item ${view === 'lora-upload' ? 'active' : ''}`}
             onClick={() => {
               setView('lora-upload')
@@ -205,6 +216,8 @@ export default function App() {
           <KnowledgeView onToast={showToast} />
         ) : view === 'analytics' ? (
           <AnalyticsView onToast={showToast} />
+        ) : view === 'training' ? (
+          <TrainingView onToast={showToast} onNavigate={setView} />
         ) : view === 'lora-upload' ? (
           <LoraUploadView onToast={showToast} />
         ) : (
