@@ -50,7 +50,14 @@ async function sendNetwork(path, options = {}) {
   }
   const payload = await response.json().catch(() => ({}))
   if (!response.ok) {
-    const error = new Error(payload.message || payload.error || `Backend request failed (${response.status})`)
+    const serverMessage = payload.message || payload.error || `Backend request failed (${response.status})`
+    const legacyChatFailure = path === '/api/chat' && (
+      /^(?:cloudflare\s+)?workers ai inference failed\.?$/i.test(String(serverMessage).trim()) ||
+      (payload.error === 'assistant_failed' && !payload.message)
+    )
+    const error = new Error(legacyChatFailure
+      ? 'تعذر تشغيل نموذج المحادثة الآن. حاول مرة أخرى، أو ابدأ محادثة جديدة إذا تكرر الخطأ.'
+      : String(serverMessage))
     error.status = response.status
     error.isNetworkError = false
     throw error

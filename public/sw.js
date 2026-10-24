@@ -1,4 +1,4 @@
-const CACHE_NAME = 'zazo-ui-v2'
+const CACHE_NAME = 'zazo-ui-v3'
 
 self.addEventListener('install', (event) => {
   event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(['/','/index.html'])))
