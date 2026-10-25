@@ -23,8 +23,15 @@ import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.result.IntentSenderRequest
 import androidx.core.content.FileProvider
 import androidx.webkit.WebViewAssetLoader
+import com.google.android.gms.auth.api.identity.AuthorizationRequest
+import com.google.android.gms.auth.api.identity.Identity
+import com.google.android.gms.auth.api.identity.AuthorizationResult
+import com.google.android.gms.common.api.ApiException
+import com.google.android.gms.common.api.Scope
+import android.util.Base64
 import org.json.JSONObject
 import java.io.File
 import java.io.FileOutputStream
@@ -43,6 +50,28 @@ class MainActivity : ComponentActivity() {
     private var localFallbackLoaded = false
     private var updateCheckStarted = false
     private var filePathCallback: ValueCallback<Array<Uri>>? = null
+    @Volatile
+    private var pendingDriveUpload: PendingDriveUpload? = null
+
+    private data class PendingDriveUpload(
+        val fileName: String,
+        val mimeType: String,
+        val bytes: ByteArray,
+        val callbackName: String,
+    )
+
+    private val driveAuthorizationLauncher: ActivityResultLauncher<IntentSenderRequest> =
+        registerForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { result ->
+            try {
+                val authorizationResult = Identity.getAuthorizationClient(this)
+                    .getAuthorizationResultFromIntent(result.data)
+                finishDriveAuthorization(authorizationResult)
+            } catch (error: ApiException) {
+                finishDriveWithError("فشل تفويض Google Drive: ${error.statusCode}")
+            } catch (error: Exception) {
+                finishDriveWithError(error.message ?: "فشل تفويض Google Drive")
+            }
+        }
 
     private val localModelPickerLauncher: ActivityResultLauncher<Intent> = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         val uri = result.data?.data ?: return@registerForActivityResult
@@ -411,6 +440,88 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private fun requestDriveAuthorization() {
+        val request = AuthorizationRequest.builder()
+            .setRequestedScopes(listOf(Scope(DRIVE_SCOPE)))
+            .build()
+        Identity.getAuthorizationClient(this)
+            .authorize(request)
+            .addOnSuccessListener { result ->
+                if (result.hasResolution()) {
+                    driveAuthorizationLauncher.launch(
+                        IntentSenderRequest.Builder(result.pendingIntent!!.intentSender).build(),
+                    )
+                } else {
+                    finishDriveAuthorization(result)
+                }
+            }
+            .addOnFailureListener { error ->
+                finishDriveWithError(error.message ?: "فشل طلب صلاحية Google Drive")
+            }
+    }
+
+    private fun finishDriveAuthorization(result: AuthorizationResult) {
+        val token = result.accessToken
+        if (token.isNullOrBlank()) {
+            finishDriveWithError("لم تُرجع Google رمز وصول إلى Drive")
+            return
+        }
+        val upload = pendingDriveUpload ?: return
+        executor.execute { uploadToDrive(upload, token) }
+    }
+
+    private fun uploadToDrive(upload: PendingDriveUpload, accessToken: String) {
+        var connection: HttpURLConnection? = null
+        try {
+            val boundary = "zazo-drive-${System.currentTimeMillis()}"
+            val metadata = JSONObject()
+                .put("name", upload.fileName)
+                .put("parents", org.json.JSONArray().put(GOOGLE_DRIVE_FOLDER_ID))
+                .put("description", "Uploaded from Zazo Android")
+            connection = (URL(DRIVE_UPLOAD_URL).openConnection() as HttpURLConnection).apply {
+                connectTimeout = 20_000
+                readTimeout = 60_000
+                requestMethod = "POST"
+                doOutput = true
+                setRequestProperty("Authorization", "Bearer $accessToken")
+                setRequestProperty("Content-Type", "multipart/related; boundary=$boundary")
+            }
+            connection.outputStream.use { output ->
+                output.write("--$boundary\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n".toByteArray())
+                output.write(metadata.toString().toByteArray())
+                output.write("\r\n--$boundary\r\nContent-Type: ${upload.mimeType}\r\n\r\n".toByteArray())
+                output.write(upload.bytes)
+                output.write("\r\n--$boundary--\r\n".toByteArray())
+            }
+            val status = connection.responseCode
+            val stream = if (status in 200..299) connection.inputStream else connection.errorStream
+            val body = stream?.bufferedReader()?.use { it.readText() } ?: "{}"
+            if (status !in 200..299) throw IllegalStateException("Google Drive HTTP $status: $body")
+            finishDriveWithPayload(JSONObject().put("ok", true).put("file", JSONObject(body)).toString(), upload.callbackName)
+        } catch (error: Exception) {
+            finishDriveWithPayload(
+                JSONObject().put("ok", false).put("error", error.message ?: "فشل رفع الملف إلى Google Drive").toString(),
+                upload.callbackName,
+            )
+        } finally {
+            connection?.disconnect()
+        }
+    }
+
+    private fun finishDriveAuthorizationError(message: String) {
+        val upload = pendingDriveUpload ?: return
+        finishDriveWithPayload(JSONObject().put("ok", false).put("error", message).toString(), upload.callbackName)
+    }
+
+    private fun finishDriveWithError(message: String) = finishDriveAuthorizationError(message)
+
+    private fun finishDriveWithPayload(payload: String, callbackName: String) {
+        pendingDriveUpload = null
+        mainHandler.post {
+            if (::webView.isInitialized) webView.evaluateJavascript("$callbackName(${JSONObject.quote(payload)})", null)
+        }
+    }
+
     private fun compareVersions(left: String, right: String): Int {
         val numberPattern = Regex("\\d+")
         val leftParts = numberPattern.findAll(left).map { it.value.toLongOrNull() ?: 0L }.toList()
@@ -468,9 +579,35 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+
+        @JavascriptInterface
+        fun uploadTrainingFile(fileName: String, mimeType: String, base64: String, callbackName: String) {
+            if (!callbackName.matches(Regex("^[A-Za-z_$][A-Za-z0-9_$]*$"))) return
+            executor.execute {
+                try {
+                    pendingDriveUpload = PendingDriveUpload(
+                        fileName = fileName,
+                        mimeType = mimeType.ifBlank { "application/octet-stream" },
+                        bytes = Base64.decode(base64, Base64.DEFAULT),
+                        callbackName = callbackName,
+                    )
+                    mainHandler.post { requestDriveAuthorization() }
+                } catch (error: Exception) {
+                    mainHandler.post {
+                        webView.evaluateJavascript(
+                            "$callbackName(${JSONObject.quote(JSONObject().put("ok", false).put("error", error.message ?: "ملف غير صالح").toString())})",
+                            null,
+                        )
+                    }
+                }
+            }
+        }
     }
 
     companion object {
+        private const val DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.file"
+        private const val GOOGLE_DRIVE_FOLDER_ID = "1IzEUSNFHeu_YqV71n3l8yxyM_g6GTpmV"
+        private const val DRIVE_UPLOAD_URL = "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,mimeType,webViewLink,size"
         private const val LOCAL_ASSET_HOST = "appassets.androidplatform.net"
         private const val LOCAL_UI_URL = "https://appassets.androidplatform.net/assets/index.html"
         private const val GITHUB_REPOSITORY = "zazotona301-oss/zazo"

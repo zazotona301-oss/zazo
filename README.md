@@ -108,3 +108,5 @@ VITE_GOOGLE_DRIVE_FOLDER_ID="معرّف مجلد zazo_brain_lora/input"
 ```
 
 يستخدم التطبيق نطاق OAuth المقيد `drive.file`؛ لا يطلب صلاحية قراءة كامل Drive. عند الضغط على زر الرفع يفتح Google OAuth، ثم ينشئ الملف داخل المجلد المحدد. لا تحفظ Client Secret في الواجهة أو Git؛ الواجهة تحتاج Client ID العام فقط. يجب إضافة نطاق الواجهة الفعلي إلى Authorized JavaScript origins في OAuth Client، وتمكين Google Drive API في مشروع Google Cloud.
+
+في نسخة Android، يستخدم الزر نفسه `AndroidZazoLocal.uploadTrainingFile` عبر Kotlin Bridge، ثم `AuthorizationClient` من Google Play services للحصول على تصريح Drive أصلي، ويرفع الملف إلى المجلد `1IzEUSNFHeu_YqV71n3l8yxyM_g6GTpmV`. إعداد Android OAuth المسجل هو `com.zazo.brain` مع بصمة SHA-1 لشهادة الإصدار؛ لا يحتاج التطبيق إلى Client Secret.

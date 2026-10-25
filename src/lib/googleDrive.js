@@ -8,6 +8,45 @@ let scriptPromise
 let tokenClient
 let accessToken
 
+async function uploadViaAndroidBridge({ file, uploadId }) {
+  const bridge = globalThis.AndroidZazoLocal
+  if (!bridge || typeof bridge.uploadTrainingFile !== 'function') return null
+  const bytes = new Uint8Array(await file.arrayBuffer())
+  let binary = ''
+  const chunkSize = 0x8000
+  for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(offset, Math.min(offset + chunkSize, bytes.length)))
+  }
+  const base64 = btoa(binary)
+  const callbackName = `__zazoDriveNative_${Date.now()}_${Math.random().toString(36).slice(2)}`
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      delete globalThis[callbackName]
+      reject(new Error('انتهت مهلة رفع الملف من تطبيق Android'))
+    }, 180_000)
+    globalThis[callbackName] = (payload) => {
+      clearTimeout(timeout)
+      delete globalThis[callbackName]
+      try {
+        const result = JSON.parse(payload)
+        if (!result.ok) {
+          reject(new Error(result.error || 'فشل رفع الملف إلى Google Drive'))
+          return
+        }
+        resolve(result.file)
+      } catch {
+        reject(new Error('استجابة غير صالحة من Google Drive داخل Android'))
+      }
+    }
+    bridge.uploadTrainingFile(
+      `zazo-training-${uploadId || Date.now()}-${file.name}`,
+      file.type || 'application/octet-stream',
+      base64,
+      callbackName,
+    )
+  })
+}
+
 function loadGoogleIdentity() {
   if (globalThis.google?.accounts?.oauth2) return Promise.resolve()
   if (!scriptPromise) {
@@ -79,6 +118,8 @@ export function isGoogleDriveConfigured() {
 
 export async function uploadTrainingFileToDrive({ file, uploadId, worldId }) {
   if (!file) throw new Error('اختر ملف التدريب أولًا')
+  const nativeResult = await uploadViaAndroidBridge({ file, uploadId })
+  if (nativeResult) return nativeResult
   const token = await requestDriveToken()
   const metadata = {
     name: `zazo-training-${uploadId || Date.now()}-${file.name}`,
