@@ -554,7 +554,7 @@ class MainActivity : ComponentActivity() {
         fun chooseModel() {
             val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
                 addCategory(Intent.CATEGORY_OPENABLE)
-                type = "application/octet-stream"
+                type = "application/zip"
             }
             mainHandler.post {
                 try {

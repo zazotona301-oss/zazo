@@ -1,71 +1,88 @@
 package com.zazo.brain
 
 import android.content.Context
-import com.google.ai.edge.litertlm.Engine
-import com.google.ai.edge.litertlm.EngineConfig
-import kotlinx.coroutines.runBlocking
+import com.google.mediapipe.tasks.genai.llminference.LlmInference
 import java.io.File
+import java.io.InputStream
+import java.util.zip.ZipInputStream
 
 /**
- * Owns the on-device LiteRT-LM engine.
- *
- * The model is intentionally kept outside the APK at filesDir/models/zazo.litertlm
- * so an APK update does not duplicate a multi-gigabyte model. The app can install
- * the file through the Android file picker exposed by MainActivity.
+ * Runs the Gemma 2B base FlatBuffer with the trained LoRA FlatBuffer.
+ * The Colab notebook creates zazo_android_model.zip containing base.bin and lora.bin.
  */
 class LocalModelManager(private val context: Context) {
     private val modelDirectory = File(context.filesDir, "models")
-    private val modelFile = File(modelDirectory, MODEL_FILE_NAME)
-    private var engine: Engine? = null
+    private val baseModelFile = File(modelDirectory, BASE_MODEL_NAME)
+    private val loraModelFile = File(modelDirectory, LORA_MODEL_NAME)
+    private var inference: LlmInference? = null
 
     @Synchronized
-    fun isAvailable(): Boolean = modelFile.isFile && modelFile.length() > MIN_MODEL_BYTES
+    fun isAvailable(): Boolean =
+        baseModelFile.isFile && baseModelFile.length() > MIN_MODEL_BYTES &&
+            loraModelFile.isFile && loraModelFile.length() > MIN_MODEL_BYTES
 
     @Synchronized
-    fun modelPath(): String = modelFile.absolutePath
+    fun modelPath(): String = baseModelFile.absolutePath
 
     @Synchronized
     fun close() {
-        engine?.close()
-        engine = null
+        inference?.close()
+        inference = null
     }
 
-    fun installModel(source: java.io.InputStream) {
+    /** Installs a zazo_android_model.zip safely into the app-private model directory. */
+    fun installModel(source: InputStream) {
         modelDirectory.mkdirs()
-        val temporary = File(modelDirectory, "$MODEL_FILE_NAME.part")
-        source.use { input ->
-            temporary.outputStream().use { output -> input.copyTo(output) }
+        val temporaryDirectory = File(modelDirectory, ".staging-${System.currentTimeMillis()}").apply { mkdirs() }
+        try {
+            ZipInputStream(source.buffered()).use { zip ->
+                var entry = zip.nextEntry
+                while (entry != null) {
+                    if (!entry.isDirectory && (entry.name == BASE_MODEL_NAME || entry.name == LORA_MODEL_NAME)) {
+                        val target = File(temporaryDirectory, entry.name)
+                        target.outputStream().use { output -> zip.copyTo(output) }
+                    }
+                    zip.closeEntry()
+                    entry = zip.nextEntry
+                }
+            }
+            val stagedBase = File(temporaryDirectory, BASE_MODEL_NAME)
+            val stagedLora = File(temporaryDirectory, LORA_MODEL_NAME)
+            require(stagedBase.length() > MIN_MODEL_BYTES && stagedLora.length() > MIN_MODEL_BYTES) {
+                "حزمة Android يجب أن تحتوي base.bin وlora.bin صالحين"
+            }
+            close()
+            baseModelFile.delete()
+            loraModelFile.delete()
+            check(stagedBase.renameTo(baseModelFile)) { "تعذر تثبيت base.bin" }
+            check(stagedLora.renameTo(loraModelFile)) { "تعذر تثبيت lora.bin" }
+        } finally {
+            temporaryDirectory.deleteRecursively()
         }
-        require(temporary.length() > MIN_MODEL_BYTES) { "ملف LiteRT-LM صغير أو غير مكتمل" }
-        if (!temporary.renameTo(modelFile)) {
-            modelFile.delete()
-            check(temporary.renameTo(modelFile)) { "تعذر تثبيت ملف النموذج" }
-        }
-        close()
     }
 
-    /** Runs one prompt off the UI thread. The caller already serializes requests. */
     @Synchronized
     fun generate(prompt: String): String {
-        check(isAvailable()) { "لم يتم تثبيت نموذج Zazo المحلي بعد" }
-        val activeEngine = engine ?: Engine(EngineConfig(modelPath = modelFile.absolutePath)).also {
-            it.initialize()
-            engine = it
-        }
-        val conversation = activeEngine.createConversation()
-        return try {
-            val result = StringBuilder()
-            runBlocking {
-                conversation.sendMessageAsync(prompt).collect { message -> result.append(message.toString()) }
-            }
-            result.toString().trim()
-        } finally {
-            conversation.close()
-        }
+        check(isAvailable()) { "لم يتم تثبيت حزمة نموذج Zazo المحلية بعد" }
+        val activeInference = inference ?: LlmInference.createFromOptions(
+            context,
+            LlmInference.LlmInferenceOptions.builder()
+                .setModelPath(baseModelFile.absolutePath)
+                .setLoraPath(loraModelFile.absolutePath)
+                .setMaxTokens(MAX_TOKENS)
+                .setTopK(TOP_K)
+                .setTemperature(TEMPERATURE)
+                .build(),
+        ).also { inference = it }
+        return activeInference.generateResponse(prompt).trim()
     }
 
     companion object {
-        const val MODEL_FILE_NAME = "zazo.litertlm"
+        const val BASE_MODEL_NAME = "base.bin"
+        const val LORA_MODEL_NAME = "lora.bin"
         private const val MIN_MODEL_BYTES = 1024L * 1024L
+        private const val MAX_TOKENS = 512
+        private const val TOP_K = 40
+        private const val TEMPERATURE = 0.7f
     }
 }
