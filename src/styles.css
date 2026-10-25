@@ -1651,6 +1651,7 @@ body {
 .training-preview-row b { color: var(--text-primary); }
 .training-upload-submit { width: 100%; min-height: 44px; margin-top: 14px; font-family: inherit; }
 .training-upload-submit:disabled { opacity: .5; cursor: not-allowed; }
+.training-drive-upload { width: 100%; margin-top: 8px; }
 .training-upload-result { max-width: 1220px; margin: 14px auto 28px; padding: 15px 17px; border: 1px solid var(--border); border-inline-start: 3px solid var(--accent); border-radius: var(--radius); background: var(--bg-secondary); }
 .training-upload-result.warning { border-inline-start-color: var(--warning); }
 .training-upload-result strong { color: var(--text-primary); }

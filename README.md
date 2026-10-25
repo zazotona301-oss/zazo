@@ -97,3 +97,14 @@ ZAZO_WEB_UI_URL="$PAGES_UI_URL" \
 مستودع الباك إند هو `zazotona301-oss/zazo-brain-backend`. يربط `wrangler.toml` الـ Worker بموارد `HYPERDRIVE` إلى Neon و`ACTIVE_CONTEXT` و`ARCHIVE_STORE` إلى KV. طبّق migration Neon الموجودة في مستودع الباك إند قبل استخدام مسارات الذاكرة.
 
 عنوان الـ API الافتراضي هو `https://zazo-brain-backend.zazotona301.workers.dev`، ويمكن تغييره عبر `VITE_API_BASE_URL` عند الحاجة.
+
+### الرفع المباشر إلى Google Drive من الواجهة
+
+تحتوي صفحة التدريب على زر مستقل لرفع الملف مباشرةً إلى Google Drive عبر Google Drive API، دون المرور عبر Cloudflare أو Workers AI. يتطلب ذلك تفعيل Google Drive API وإنشاء OAuth 2.0 Web Client في Google Cloud، ثم ضبط متغيري البناء:
+
+```bash
+VITE_GOOGLE_DRIVE_CLIENT_ID="...apps.googleusercontent.com"
+VITE_GOOGLE_DRIVE_FOLDER_ID="معرّف مجلد zazo_brain_lora/input"
+```
+
+يستخدم التطبيق نطاق OAuth المقيد `drive.file`؛ لا يطلب صلاحية قراءة كامل Drive. عند الضغط على زر الرفع يفتح Google OAuth، ثم ينشئ الملف داخل المجلد المحدد. لا تحفظ Client Secret في الواجهة أو Git؛ الواجهة تحتاج Client ID العام فقط. يجب إضافة نطاق الواجهة الفعلي إلى Authorized JavaScript origins في OAuth Client، وتمكين Google Drive API في مشروع Google Cloud.

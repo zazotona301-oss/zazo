@@ -6,6 +6,7 @@ import {
   fetchWorlds,
   uploadTrainingDataset,
 } from '../lib/api'
+import { uploadTrainingFileToDrive } from '../lib/googleDrive'
 import { parseTrainingSource } from '../lib/dataParser'
 
 const STRUCTURED_EXTENSIONS = new Set(['json', 'jsonl', 'ndjson', 'csv', 'tsv'])
@@ -28,6 +29,7 @@ export default function TrainingView({ onToast, onNavigate }) {
   const [records, setRecords] = useState([])
   const [parseError, setParseError] = useState('')
   const [uploadBusy, setUploadBusy] = useState(false)
+  const [driveBusy, setDriveBusy] = useState(false)
   const [uploadResult, setUploadResult] = useState(null)
   const toastRef = useRef(onToast)
   toastRef.current = onToast
@@ -127,6 +129,19 @@ export default function TrainingView({ onToast, onNavigate }) {
     }
   }
 
+  async function handleDriveUpload() {
+    if (!validUpload) return onToast('اختر ملفًا منظمًا مكتملًا بالعربية قبل رفعه إلى Google Drive', true)
+    setDriveBusy(true)
+    try {
+      const result = await uploadTrainingFileToDrive({ file: selectedFile, uploadId, worldId: selectedWorldId })
+      onToast(`تم رفع ملف التدريب إلى Google Drive: ${result.name || selectedFile.name}`)
+    } catch (error) {
+      onToast(error?.message || 'تعذر رفع ملف التدريب إلى Google Drive', true)
+    } finally {
+      setDriveBusy(false)
+    }
+  }
+
   function resetUpload() {
     setSelectedFile(null)
     setSourceName('')
@@ -211,6 +226,9 @@ export default function TrainingView({ onToast, onNavigate }) {
           {loading && <p className="training-loading">جارٍ تحميل بيانات Neon…</p>}
           <button className="btn-primary training-upload-submit" type="button" onClick={handleUpload} disabled={uploadBusy || !validUpload}>
             {uploadBusy ? 'جارٍ رفع الملف وتحديث manifest…' : `رفع ${records.length || ''} مثال إلى مجموعة التدريب`}
+          </button>
+          <button className="training-action-link secondary training-drive-upload" type="button" onClick={handleDriveUpload} disabled={driveBusy || uploadBusy || !validUpload}>
+            {driveBusy ? 'جارٍ الرفع إلى Google Drive…' : 'رفع نسخة التدريب إلى Google Drive'}
           </button>
         </section>
 
