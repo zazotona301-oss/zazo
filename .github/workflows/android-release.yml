@@ -105,6 +105,8 @@ jobs:
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
           VITE_API_BASE_URL: ${{ vars.VITE_API_BASE_URL || 'https://zazo-brain-backend.zazotona301.workers.dev' }}
           ZAZO_WEB_UI_URL: ${{ vars.ZAZO_WEB_UI_URL || 'https://zazo-brain-ui.pages.dev' }}
+          VITE_GOOGLE_DRIVE_CLIENT_ID: ${{ vars.VITE_GOOGLE_DRIVE_CLIENT_ID || secrets.VITE_GOOGLE_DRIVE_CLIENT_ID }}
+          VITE_GOOGLE_DRIVE_FOLDER_ID: ${{ vars.VITE_GOOGLE_DRIVE_FOLDER_ID || secrets.VITE_GOOGLE_DRIVE_FOLDER_ID }}
         run: |
           chmod +x android/gradlew
           ./android/gradlew --no-daemon -p android \
