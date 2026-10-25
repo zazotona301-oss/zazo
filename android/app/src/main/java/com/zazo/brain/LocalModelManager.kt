@@ -2,12 +2,13 @@ package com.zazo.brain
 
 import android.content.Context
 import com.google.mediapipe.tasks.genai.llminference.LlmInference
-import java.io.File
+import com.google.mediapipe.tasks.genai.llminference.LlmInferenceSession
 import java.io.InputStream
 import java.util.zip.ZipInputStream
+import java.io.File
 
 /**
- * Runs the Gemma 2B base FlatBuffer with the trained LoRA FlatBuffer.
+ * Runs Gemma 2B with the trained LoRA FlatBuffer.
  * The Colab notebook creates zazo_android_model.zip containing base.bin and lora.bin.
  */
 class LocalModelManager(private val context: Context) {
@@ -20,9 +21,6 @@ class LocalModelManager(private val context: Context) {
     fun isAvailable(): Boolean =
         baseModelFile.isFile && baseModelFile.length() > MIN_MODEL_BYTES &&
             loraModelFile.isFile && loraModelFile.length() > MIN_MODEL_BYTES
-
-    @Synchronized
-    fun modelPath(): String = baseModelFile.absolutePath
 
     @Synchronized
     fun close() {
@@ -68,13 +66,23 @@ class LocalModelManager(private val context: Context) {
             context,
             LlmInference.LlmInferenceOptions.builder()
                 .setModelPath(baseModelFile.absolutePath)
-                .setLoraPath(loraModelFile.absolutePath)
                 .setMaxTokens(MAX_TOKENS)
+                .build(),
+        ).also { inference = it }
+        val session = LlmInferenceSession.createFromOptions(
+            activeInference,
+            LlmInferenceSession.LlmInferenceSessionOptions.builder()
+                .setLoraPath(loraModelFile.absolutePath)
                 .setTopK(TOP_K)
                 .setTemperature(TEMPERATURE)
                 .build(),
-        ).also { inference = it }
-        return activeInference.generateResponse(prompt).trim()
+        )
+        return try {
+            session.addQueryChunk(prompt)
+            session.generateResponse().trim()
+        } finally {
+            session.close()
+        }
     }
 
     companion object {
