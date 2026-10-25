@@ -77,6 +77,10 @@ android {
         applicationId = "com.zazo.brain"
         minSdk = 24
         targetSdk = 35
+        // معظم هواتف Android الحديثة ARM64؛ منع تضمين x86 وARM32 يقلل حجم APK.
+        ndk {
+            abiFilters += "arm64-v8a"
+        }
         versionCode = (providers.gradleProperty("versionCode").orNull ?: "1000000").toInt()
         versionName = providers.gradleProperty("versionName").orNull ?: "1.0.0"
         buildConfigField("String", "WEB_UI_URL", "\"$escapedWebUiUrl\"")
