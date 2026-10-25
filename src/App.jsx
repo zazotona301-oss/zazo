@@ -30,11 +30,26 @@ export default function App() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [toast, setToast] = useState(null)
   const [syncStatus, setSyncStatus] = useState({ online: navigator.onLine, pending: 0, syncing: false })
+  const [localModelAvailable, setLocalModelAvailable] = useState(() => Boolean(globalThis.AndroidZazoLocal?.isAvailable?.()))
 
   useEffect(() => {
     loadConversations()
     return subscribeSyncStatus(setSyncStatus)
   }, [])
+
+  useEffect(() => {
+    const refreshLocalModel = () => setLocalModelAvailable(Boolean(globalThis.AndroidZazoLocal?.isAvailable?.()))
+    globalThis.addEventListener?.('zazo-local-model-ready', refreshLocalModel)
+    return () => globalThis.removeEventListener?.('zazo-local-model-ready', refreshLocalModel)
+  }, [])
+
+  function chooseLocalModel() {
+    if (typeof globalThis.AndroidZazoLocal?.chooseModel !== 'function') {
+      setToast({ message: 'تثبيت النموذج المحلي متاح داخل تطبيق Android فقط', isError: true })
+      return
+    }
+    globalThis.AndroidZazoLocal.chooseModel()
+  }
 
   async function loadConversations() {
     setLoadingConvos(true)
@@ -155,6 +170,9 @@ export default function App() {
             }}
           >
             <IconCpu /> تدريب Zazo / رفع LoRA
+          </button>
+          <button className="nav-item" type="button" onClick={chooseLocalModel}>
+            <IconCpu /> {localModelAvailable ? 'النموذج المحلي مثبت' : 'تثبيت نموذج Android المحلي'}
           </button>
         </nav>
 

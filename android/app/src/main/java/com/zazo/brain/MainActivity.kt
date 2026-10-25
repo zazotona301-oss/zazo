@@ -17,6 +17,7 @@ import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.webkit.ValueCallback
+import android.webkit.JavascriptInterface
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedCallback
@@ -36,11 +37,30 @@ class MainActivity : ComponentActivity() {
     private lateinit var webView: WebView
     private val mainHandler = Handler(Looper.getMainLooper())
     private val executor = Executors.newSingleThreadExecutor()
+    private lateinit var localModelManager: LocalModelManager
     private val remoteUiUrl = BuildConfig.WEB_UI_URL.takeIf { it.isNotBlank() }
     private var remoteHomeLoadInProgress = false
     private var localFallbackLoaded = false
     private var updateCheckStarted = false
     private var filePathCallback: ValueCallback<Array<Uri>>? = null
+
+    private val localModelPickerLauncher: ActivityResultLauncher<Intent> = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        val uri = result.data?.data ?: return@registerForActivityResult
+        executor.execute {
+            try {
+                contentResolver.openInputStream(uri)?.use { localModelManager.installModel(it) }
+                    ?: error("تعذر فتح ملف النموذج")
+                mainHandler.post {
+                    Toast.makeText(this, "تم تثبيت نموذج Zazo المحلي", Toast.LENGTH_LONG).show()
+                    webView.evaluateJavascript("window.dispatchEvent(new CustomEvent('zazo-local-model-ready'))", null)
+                }
+            } catch (error: Exception) {
+                mainHandler.post {
+                    Toast.makeText(this, "تعذر تثبيت النموذج المحلي: ${error.message}", Toast.LENGTH_LONG).show()
+                }
+            }
+        }
+    }
 
     private val filePickerLauncher: ActivityResultLauncher<Intent> = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         val callback = filePathCallback
@@ -51,6 +71,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        localModelManager = LocalModelManager(this)
         window.statusBarColor = android.graphics.Color.rgb(10, 14, 26)
         window.navigationBarColor = android.graphics.Color.rgb(10, 14, 26)
 
@@ -72,6 +93,7 @@ class MainActivity : ComponentActivity() {
             settings.allowUniversalAccessFromFileURLs = false
             settings.setSupportMultipleWindows(false)
             settings.textZoom = 100
+            addJavascriptInterface(LocalModelBridge(), "AndroidZazoLocal")
             webChromeClient = object : WebChromeClient() {
                 override fun onShowFileChooser(
                     view: WebView?,
@@ -409,7 +431,43 @@ class MainActivity : ComponentActivity() {
             webView.destroy()
         }
         executor.shutdownNow()
+        if (::localModelManager.isInitialized) localModelManager.close()
         super.onDestroy()
+    }
+
+    private inner class LocalModelBridge {
+        @JavascriptInterface
+        fun isAvailable(): Boolean = localModelManager.isAvailable()
+
+        @JavascriptInterface
+        fun chooseModel() {
+            val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                addCategory(Intent.CATEGORY_OPENABLE)
+                type = "application/octet-stream"
+            }
+            mainHandler.post {
+                try {
+                    localModelPickerLauncher.launch(intent)
+                } catch (_: Exception) {
+                    Toast.makeText(this@MainActivity, "تعذر فتح اختيار ملف النموذج", Toast.LENGTH_LONG).show()
+                }
+            }
+        }
+
+        @JavascriptInterface
+        fun ask(prompt: String, callbackName: String) {
+            if (!callbackName.matches(Regex("^[A-Za-z_$][A-Za-z0-9_$]*$"))) return
+            executor.execute {
+                val payload = try {
+                    JSONObject().put("ok", true).put("text", localModelManager.generate(prompt)).toString()
+                } catch (error: Exception) {
+                    JSONObject().put("ok", false).put("error", error.message ?: "تعذر تشغيل النموذج المحلي").toString()
+                }
+                mainHandler.post {
+                    webView.evaluateJavascript("$callbackName(${JSONObject.quote(payload)})", null)
+                }
+            }
+        }
     }
 
     companion object {

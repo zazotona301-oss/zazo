@@ -207,7 +207,37 @@ export async function addMessage(conversationId, role, content, metadata = {}) {
   })
 }
 
+function localAssistantPrompt(messages) {
+  const transcript = messages.map((message) => `${message.role === 'assistant' ? 'المساعد' : 'المستخدم'}: ${message.content}`).join('\n\n')
+  return `${transcript}\n\nالمساعد:`
+}
+
+async function requestLocalAssistant(messages) {
+  const bridge = globalThis.AndroidZazoLocal
+  if (!bridge || typeof bridge.isAvailable !== 'function' || !bridge.isAvailable()) return null
+  const callbackName = `__zazoLocalResponse_${Date.now()}_${Math.random().toString(36).slice(2)}`
+  return new Promise((resolve) => {
+    const timeout = setTimeout(() => {
+      delete globalThis[callbackName]
+      resolve(null)
+    }, 120_000)
+    globalThis[callbackName] = (payload) => {
+      clearTimeout(timeout)
+      delete globalThis[callbackName]
+      try {
+        const result = JSON.parse(payload)
+        resolve(result.ok && result.text ? { answer: result.text, source: 'local' } : null)
+      } catch {
+        resolve(null)
+      }
+    }
+    bridge.ask(localAssistantPrompt(messages), callbackName)
+  })
+}
+
 export async function requestAssistantResponse({ conversationId, messages }) {
+  const localResult = await requestLocalAssistant(messages)
+  if (localResult) return localResult
   return sendNetwork('/api/chat', {
     method: 'POST',
     body: JSON.stringify({ conversationId, messages }),
