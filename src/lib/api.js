@@ -9,12 +9,19 @@ import {
 } from './offlineStore'
 
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || 'https://zazo-brain-backend.zazotona301.workers.dev').replace(/\/$/, '')
+const ADMIN_UPLOAD_PATHS = new Set(['/api/admin/training-upload', '/api/admin/lora-upload'])
 const syncListeners = new Set()
 let syncRunning = false
 let syncState = { online: globalThis.navigator?.onLine ?? true, pending: 0, syncing: false }
 
 export function getApiBaseUrl() {
   return API_BASE_URL
+}
+
+function getAdminUploadUrl(path) {
+  const hostname = globalThis.location?.hostname || ''
+  const usesPagesAccessProxy = hostname === 'zazo-brain-ui.pages.dev' || hostname.endsWith('.pages.dev')
+  return ADMIN_UPLOAD_PATHS.has(path) && usesPagesAccessProxy ? path : `${API_BASE_URL}${path}`
 }
 
 export function getSyncState() {
@@ -214,7 +221,7 @@ export async function uploadTrainingDataset({ file, uploadId, worldId }) {
   if (worldId) formData.append('worldId', worldId)
   let response
   try {
-    response = await fetch('/api/admin/training-upload', { method: 'POST', body: formData })
+    response = await fetch(getAdminUploadUrl('/api/admin/training-upload'), { method: 'POST', body: formData })
   } catch (error) {
     const reason = error instanceof Error && error.message ? error.message : 'خطأ شبكة غير معروف'
     throw new Error(`تعذر الاتصال بخدمة رفع التدريب: ${reason}`)
@@ -237,7 +244,7 @@ export async function uploadLoraAdapter({ configFile, weightsFile, fineTuneName 
   formData.append('name', fineTuneName)
   let response
   try {
-    response = await fetch('/api/admin/lora-upload', {
+    response = await fetch(getAdminUploadUrl('/api/admin/lora-upload'), {
       method: 'POST',
       body: formData,
     })
