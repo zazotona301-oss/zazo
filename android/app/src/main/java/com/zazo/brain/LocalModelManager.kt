@@ -3,13 +3,14 @@ package com.zazo.brain
 import android.content.Context
 import com.google.mediapipe.tasks.genai.llminference.LlmInference
 import com.google.mediapipe.tasks.genai.llminference.LlmInferenceSession
+import java.io.File
 import java.io.InputStream
 import java.util.zip.ZipInputStream
-import java.io.File
 
 /**
- * Runs Gemma 2B with the trained LoRA FlatBuffer.
- * The Colab notebook creates zazo_android_model.zip containing base.bin and lora.bin.
+ * Runs Gemma 2B with the Android FlatBuffer base model and LoRA.
+ * The installer accepts either a ZIP containing base.bin/lora.bin or the two
+ * unpacked files selected together by the user.
  */
 class LocalModelManager(private val context: Context) {
     private val modelDirectory = File(context.filesDir, "models")
@@ -28,35 +29,80 @@ class LocalModelManager(private val context: Context) {
         inference = null
     }
 
-    /** Installs a zazo_android_model.zip safely into the app-private model directory. */
+    /** Installs any ZIP filename containing base.bin and lora.bin. */
     fun installModel(source: InputStream) {
         modelDirectory.mkdirs()
-        val temporaryDirectory = File(modelDirectory, ".staging-${System.currentTimeMillis()}").apply { mkdirs() }
+        val temporaryDirectory = createStagingDirectory()
+        var sawSafetensors = false
         try {
             ZipInputStream(source.buffered()).use { zip ->
                 var entry = zip.nextEntry
                 while (entry != null) {
-                    if (!entry.isDirectory && (entry.name == BASE_MODEL_NAME || entry.name == LORA_MODEL_NAME)) {
-                        val target = File(temporaryDirectory, entry.name)
-                        target.outputStream().use { output -> zip.copyTo(output) }
+                    val entryBaseName = entry.name.substringAfterLast('/').substringAfterLast('\\')
+                    if (!entry.isDirectory && entryBaseName.endsWith(".safetensors", ignoreCase = true)) {
+                        sawSafetensors = true
+                    }
+                    if (!entry.isDirectory && entryBaseName in setOf(BASE_MODEL_NAME, LORA_MODEL_NAME)) {
+                        File(temporaryDirectory, entryBaseName).outputStream().use { output ->
+                            zip.copyTo(output)
+                        }
                     }
                     zip.closeEntry()
                     entry = zip.nextEntry
                 }
             }
-            val stagedBase = File(temporaryDirectory, BASE_MODEL_NAME)
-            val stagedLora = File(temporaryDirectory, LORA_MODEL_NAME)
-            require(stagedBase.length() > MIN_MODEL_BYTES && stagedLora.length() > MIN_MODEL_BYTES) {
-                "حزمة Android يجب أن تحتوي base.bin وlora.bin صالحين"
-            }
-            close()
-            baseModelFile.delete()
-            loraModelFile.delete()
-            check(stagedBase.renameTo(baseModelFile)) { "تعذر تثبيت base.bin" }
-            check(stagedLora.renameTo(loraModelFile)) { "تعذر تثبيت lora.bin" }
+            commitStaged(temporaryDirectory, sawSafetensors)
         } finally {
             temporaryDirectory.deleteRecursively()
         }
+    }
+
+    /** Installs unpacked files selected together, such as base.bin and lora.bin. */
+    fun installFiles(files: List<Pair<String, InputStream>>) {
+        require(files.isNotEmpty()) { "اختر ملفي base.bin وlora.bin معًا" }
+        modelDirectory.mkdirs()
+        val temporaryDirectory = createStagingDirectory()
+        var sawSafetensors = false
+        try {
+            files.forEach { (name, source) ->
+                val baseName = File(name).name
+                if (baseName.endsWith(".safetensors", ignoreCase = true)) {
+                    sawSafetensors = true
+                }
+                if (baseName == BASE_MODEL_NAME || baseName == LORA_MODEL_NAME) {
+                    source.use { input ->
+                        File(temporaryDirectory, baseName).outputStream().use { output ->
+                            input.copyTo(output)
+                        }
+                    }
+                } else {
+                    source.close()
+                }
+            }
+            commitStaged(temporaryDirectory, sawSafetensors)
+        } finally {
+            temporaryDirectory.deleteRecursively()
+        }
+    }
+
+    private fun createStagingDirectory(): File =
+        File(modelDirectory, ".staging-${System.currentTimeMillis()}").apply { mkdirs() }
+
+    private fun commitStaged(temporaryDirectory: File, sawSafetensors: Boolean) {
+        val stagedBase = File(temporaryDirectory, BASE_MODEL_NAME)
+        val stagedLora = File(temporaryDirectory, LORA_MODEL_NAME)
+        require(stagedBase.length() > MIN_MODEL_BYTES && stagedLora.length() > MIN_MODEL_BYTES) {
+            if (sawSafetensors) {
+                "هذه أوزان Hugging Face بصيغة .safetensors وليست أوزان Android. يجب تحويلها أولًا إلى base.bin وlora.bin"
+            } else {
+                "اختر ZIP يحتوي base.bin وlora.bin، أو اختر الملفين المفكوكين معًا"
+            }
+        }
+        close()
+        baseModelFile.delete()
+        loraModelFile.delete()
+        check(stagedBase.renameTo(baseModelFile)) { "تعذر تثبيت base.bin" }
+        check(stagedLora.renameTo(loraModelFile)) { "تعذر تثبيت lora.bin" }
     }
 
     @Synchronized

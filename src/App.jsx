@@ -172,7 +172,7 @@ export default function App() {
             <IconCpu /> تدريب Zazo / رفع LoRA
           </button>
           <button className="nav-item" type="button" onClick={chooseLocalModel}>
-            <IconCpu /> {localModelAvailable ? 'النموذج المحلي مثبت' : 'تثبيت نموذج Android المحلي'}
+            <IconCpu /> {localModelAvailable ? 'حزمة النموذج المحلي مثبتة' : 'تثبيت حزمة أوزان Android ZIP'}
           </button>
         </nav>
 

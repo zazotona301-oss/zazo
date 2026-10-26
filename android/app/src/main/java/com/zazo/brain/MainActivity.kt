@@ -9,6 +9,7 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.provider.Settings
+import android.provider.OpenableColumns
 import android.view.ViewGroup
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceError
@@ -74,11 +75,27 @@ class MainActivity : ComponentActivity() {
         }
 
     private val localModelPickerLauncher: ActivityResultLauncher<Intent> = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
-        val uri = result.data?.data ?: return@registerForActivityResult
+        val data = result.data ?: return@registerForActivityResult
+        val selectedUris = buildList {
+            data.data?.let(::add)
+            data.clipData?.let { clip ->
+                for (index in 0 until clip.itemCount) add(clip.getItemAt(index).uri)
+            }
+        }.distinct()
+        if (selectedUris.isEmpty()) return@registerForActivityResult
         executor.execute {
             try {
-                contentResolver.openInputStream(uri)?.use { localModelManager.installModel(it) }
-                    ?: error("تعذر فتح ملف النموذج")
+                val names = selectedUris.map { displayName(it) }
+                if (selectedUris.size == 1 && names.first().endsWith(".zip", ignoreCase = true)) {
+                    contentResolver.openInputStream(selectedUris.first())?.use { localModelManager.installModel(it) }
+                        ?: error("تعذر فتح ملف ZIP")
+                } else {
+                    val files = selectedUris.map { uri ->
+                        val input = contentResolver.openInputStream(uri) ?: error("تعذر فتح ملف النموذج")
+                        displayName(uri) to input
+                    }
+                    localModelManager.installFiles(files)
+                }
                 mainHandler.post {
                     Toast.makeText(this, "تم تثبيت نموذج Zazo المحلي", Toast.LENGTH_LONG).show()
                     webView.evaluateJavascript("window.dispatchEvent(new CustomEvent('zazo-local-model-ready'))", null)
@@ -90,6 +107,12 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
+
+    private fun displayName(uri: Uri): String =
+        contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+            if (cursor.moveToFirst()) cursor.getString(0) ?: uri.lastPathSegment.orEmpty()
+            else uri.lastPathSegment.orEmpty()
+        } ?: uri.lastPathSegment.orEmpty()
 
     private val filePickerLauncher: ActivityResultLauncher<Intent> = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         val callback = filePathCallback
@@ -554,7 +577,14 @@ class MainActivity : ComponentActivity() {
         fun chooseModel() {
             val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
                 addCategory(Intent.CATEGORY_OPENABLE)
-                type = "application/zip"
+                // Some Android file managers report ZIP archives as octet-stream.
+                type = "*/*"
+                putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
+                putExtra(Intent.EXTRA_MIME_TYPES, arrayOf(
+                    "application/zip",
+                    "application/x-zip-compressed",
+                    "application/octet-stream",
+                ))
             }
             mainHandler.post {
                 try {
