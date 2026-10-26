@@ -577,14 +577,10 @@ class MainActivity : ComponentActivity() {
         fun chooseModel() {
             val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
                 addCategory(Intent.CATEGORY_OPENABLE)
-                // Some Android file managers report ZIP archives as octet-stream.
+                // Show all files. Many file managers report .bin/.zip as unknown MIME;
+                // the installer validates the selected contents after the picker.
                 type = "*/*"
                 putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
-                putExtra(Intent.EXTRA_MIME_TYPES, arrayOf(
-                    "application/zip",
-                    "application/x-zip-compressed",
-                    "application/octet-stream",
-                ))
             }
             mainHandler.post {
                 try {
