@@ -51,6 +51,26 @@ export default function App() {
     globalThis.AndroidZazoLocal.chooseModel()
   }
 
+  function chooseHuggingFaceModel() {
+    const bridge = globalThis.AndroidZazoLocal
+    if (typeof bridge?.chooseHuggingFaceModel !== 'function') {
+      showToast('تنزيل النماذج من Hugging Face متاح داخل تطبيق Android فقط', true)
+      return
+    }
+    const callbackName = `__zazoHfModel_${Date.now()}_${Math.random().toString(36).slice(2)}`
+    globalThis[callbackName] = (payload) => {
+      delete globalThis[callbackName]
+      try {
+        const result = JSON.parse(payload)
+        showToast(result.message || (result.ok ? 'تم تثبيت النموذج' : 'تعذر تثبيت النموذج'), !result.ok)
+        if (result.ok) setLocalModelAvailable(true)
+      } catch {
+        showToast('تعذر قراءة نتيجة تنزيل النموذج', true)
+      }
+    }
+    bridge.chooseHuggingFaceModel(callbackName)
+  }
+
   async function loadConversations() {
     setLoadingConvos(true)
     try {
@@ -173,6 +193,9 @@ export default function App() {
           </button>
           <button className="nav-item" type="button" onClick={chooseLocalModel}>
             <IconCpu /> {localModelAvailable ? 'حزمة النموذج المحلي مثبتة' : 'تثبيت حزمة أوزان Android ZIP'}
+          </button>
+          <button className="nav-item" type="button" onClick={chooseHuggingFaceModel}>
+            <IconCpu /> تنزيل نموذج MediaPipe من Hugging Face
           </button>
         </nav>
 

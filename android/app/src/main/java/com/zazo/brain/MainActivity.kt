@@ -10,6 +10,7 @@ import android.os.Handler
 import android.os.Looper
 import android.provider.Settings
 import android.provider.OpenableColumns
+import android.text.InputType
 import android.view.ViewGroup
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceError
@@ -20,6 +21,7 @@ import android.webkit.WebViewClient
 import android.webkit.ValueCallback
 import android.webkit.JavascriptInterface
 import android.widget.Toast
+import android.widget.EditText
 import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.ActivityResultLauncher
@@ -89,6 +91,10 @@ class MainActivity : ComponentActivity() {
                 if (selectedUris.size == 1 && names.first().endsWith(".zip", ignoreCase = true)) {
                     contentResolver.openInputStream(selectedUris.first())?.use { localModelManager.installModel(it) }
                         ?: error("تعذر فتح ملف ZIP")
+                } else if (selectedUris.size == 1 && names.first().endsWith(".task", ignoreCase = true)) {
+                    contentResolver.openInputStream(selectedUris.first())?.use {
+                        localModelManager.installTaskModel(it, "local-import", names.first())
+                    } ?: error("تعذر فتح ملف MediaPipe")
                 } else {
                     val files = selectedUris.map { uri ->
                         val input = contentResolver.openInputStream(uri) ?: error("تعذر فتح ملف النموذج")
@@ -569,6 +575,113 @@ class MainActivity : ComponentActivity() {
         super.onDestroy()
     }
 
+    private fun promptForHuggingFaceModel(callbackName: String) {
+        val repositoryInput = EditText(this).apply {
+            hint = "مثال: owner/model-repository"
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
+            setSingleLine(true)
+        }
+        AlertDialog.Builder(this)
+            .setTitle("تنزيل نموذج MediaPipe من Hugging Face")
+            .setMessage("أدخل معرّف مستودع عام. سيعرض التطبيق ملفات .task الجاهزة فقط.")
+            .setView(repositoryInput)
+            .setNegativeButton("إلغاء") { _, _ -> completeHuggingFaceCallback(callbackName, false, "تم إلغاء اختيار النموذج") }
+            .setPositiveButton("بحث عن النماذج", null)
+            .create().also { dialog ->
+                dialog.setOnShowListener {
+                    dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                        val repositoryId = repositoryInput.text.toString().trim()
+                        if (!repositoryId.matches(Regex("^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$"))) {
+                            repositoryInput.error = "اكتب owner/repository"
+                            return@setOnClickListener
+                        }
+                        dialog.dismiss()
+                        findHuggingFaceTaskModels(repositoryId, callbackName)
+                    }
+                }
+                dialog.show()
+            }
+    }
+
+    private fun findHuggingFaceTaskModels(repositoryId: String, callbackName: String) {
+        Toast.makeText(this, "جارٍ فحص ملفات المستودع العام…", Toast.LENGTH_SHORT).show()
+        executor.execute {
+            try {
+                val encodedId = repositoryId.split('/').joinToString("/") { Uri.encode(it) }
+                val connection = (URL("https://huggingface.co/api/models/$encodedId").openConnection() as HttpURLConnection).apply {
+                    connectTimeout = 20_000
+                    readTimeout = 30_000
+                    requestMethod = "GET"
+                    setRequestProperty("Accept", "application/json")
+                    setRequestProperty("User-Agent", "Zazo-Android-Model-Installer")
+                }
+                val status = connection.responseCode
+                if (status !in 200..299) error("تعذر قراءة المستودع (HTTP $status). تأكد أن المستودع عام ومعرّفه صحيح.")
+                val response = connection.inputStream.bufferedReader().use { it.readText() }
+                connection.disconnect()
+                val siblings = JSONObject(response).optJSONArray("siblings") ?: error("استجابة Hugging Face غير صالحة")
+                val taskFiles = (0 until siblings.length()).mapNotNull { index ->
+                    siblings.optJSONObject(index)?.optString("rfilename")
+                        ?.takeIf { it.endsWith(".task", ignoreCase = true) }
+                }
+                mainHandler.post {
+                    if (taskFiles.isEmpty()) {
+                        completeHuggingFaceCallback(callbackName, false, "لم أجد ملف .task جاهزاً في $repositoryId. هذا التطبيق لا يشغّل safetensors أو GGUF الخام.")
+                        return@post
+                    }
+                    AlertDialog.Builder(this)
+                        .setTitle("اختر ملف MediaPipe من $repositoryId")
+                        .setItems(taskFiles.toTypedArray()) { _, selected ->
+                            downloadHuggingFaceTask(repositoryId, taskFiles[selected], callbackName)
+                        }
+                        .setNegativeButton("إلغاء") { _, _ -> completeHuggingFaceCallback(callbackName, false, "تم إلغاء التنزيل") }
+                        .show()
+                }
+            } catch (error: Exception) {
+                mainHandler.post {
+                    completeHuggingFaceCallback(callbackName, false, error.message ?: "تعذر فحص مستودع Hugging Face")
+                }
+            }
+        }
+    }
+
+    private fun downloadHuggingFaceTask(repositoryId: String, fileName: String, callbackName: String) {
+        Toast.makeText(this, "بدأ تنزيل $fileName؛ اترك التطبيق مفتوحاً حتى يكتمل", Toast.LENGTH_LONG).show()
+        executor.execute {
+            var connection: HttpURLConnection? = null
+            try {
+                val encodedId = repositoryId.split('/').joinToString("/") { Uri.encode(it) }
+                val encodedFile = fileName.split('/').joinToString("/") { Uri.encode(it) }
+                connection = (URL("https://huggingface.co/$encodedId/resolve/main/$encodedFile?download=true").openConnection() as HttpURLConnection).apply {
+                    connectTimeout = 30_000
+                    readTimeout = 120_000
+                    instanceFollowRedirects = true
+                    requestMethod = "GET"
+                    setRequestProperty("User-Agent", "Zazo-Android-Model-Installer")
+                }
+                val status = connection.responseCode
+                if (status !in 200..299) error("تعذر تنزيل النموذج (HTTP $status)")
+                connection.inputStream.use { localModelManager.installTaskModel(it, repositoryId, fileName) }
+                mainHandler.post {
+                    webView.evaluateJavascript("window.dispatchEvent(new CustomEvent('zazo-local-model-ready'))", null)
+                    completeHuggingFaceCallback(callbackName, true, "تم تنزيل النموذج وتفعيله: $repositoryId/$fileName")
+                }
+            } catch (error: Exception) {
+                mainHandler.post {
+                    completeHuggingFaceCallback(callbackName, false, error.message ?: "فشل تنزيل النموذج")
+                }
+            } finally {
+                connection?.disconnect()
+            }
+        }
+    }
+
+    private fun completeHuggingFaceCallback(callbackName: String, ok: Boolean, message: String) {
+        if (!callbackName.matches(Regex("^[A-Za-z_$][A-Za-z0-9_$]*$"))) return
+        val payload = JSONObject().put("ok", ok).put("message", message).toString()
+        webView.evaluateJavascript("$callbackName(${JSONObject.quote(payload)})", null)
+    }
+
     private inner class LocalModelBridge {
         @JavascriptInterface
         fun isAvailable(): Boolean = localModelManager.isAvailable()
@@ -589,6 +702,12 @@ class MainActivity : ComponentActivity() {
                     Toast.makeText(this@MainActivity, "تعذر فتح اختيار ملف النموذج", Toast.LENGTH_LONG).show()
                 }
             }
+        }
+
+        @JavascriptInterface
+        fun chooseHuggingFaceModel(callbackName: String) {
+            if (!callbackName.matches(Regex("^[A-Za-z_$][A-Za-z0-9_$]*$"))) return
+            mainHandler.post { promptForHuggingFaceModel(callbackName) }
         }
 
         @JavascriptInterface

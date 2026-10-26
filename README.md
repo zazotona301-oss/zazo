@@ -112,3 +112,18 @@ VITE_GOOGLE_DRIVE_FOLDER_ID="معرّف مجلد zazo_brain_lora/input"
 في نسخة Android، يستخدم الزر نفسه `AndroidZazoLocal.uploadTrainingFile` عبر Kotlin Bridge، ثم `AuthorizationClient` من Google Play services للحصول على تصريح Drive أصلي، ويرفع الملف إلى المجلد `1IzEUSNFHeu_YqV71n3l8yxyM_g6GTpmV`. إعداد Android OAuth المسجل هو `com.zazo.brain` مع بصمة SHA-1 لشهادة الإصدار؛ لا يحتاج التطبيق إلى Client Secret.
 
 بعد نجاح التدريب، شغّل خلية **تجهيز نسخة Android محلية** في نهاية الدفتر. ستنزّل Gemma 2B الأساسي، وتحول `adapter_model.safetensors` إلى ملفي `base.bin` و`lora.bin`، ثم تنتج `zazo_android_model.zip`. التطبيق لا يتوقع ملف `.safetensors` أو `.litertlm` مباشرة؛ اختر حزمة ZIP من زر **تثبيت نموذج Android المحلي**. يستخدم Android مسار MediaPipe LLM Inference المدعوم لـ Gemma 2B مع LoRA، ويحتفظ Cloudflare كمسار احتياطي.
+
+
+### تشغيل محوّل Hugging Face المنشور محلياً على Android
+
+ملف [`adapter_model (1).safetensors`](https://huggingface.co/zazo300/zazo-gemma-lora) هو محوّل LoRA فقط، وليس نموذجاً جاهزاً للتشغيل في Android. إعداداته تطابق `google/gemma-2b-it`، برتبة 8 وطبقات `q_proj`, `k_proj`, `v_proj`, `o_proj`.
+
+لإنشاء الأوزان التي يقبلها التطبيق من دون إعادة التدريب، افتح دفتر [zazo_android_convert_hf_lora.ipynb](colab/zazo_android_convert_hf_lora.ipynb) في Google Colab، واختر Runtime يدعم GPU. سجّل الدخول إلى Hugging Face برمز وصول لحساب وافق على شروط Gemma. ينزّل الدفتر المحوّل والإعدادات من مستودع Hugging Face المحدد، ويتحقق من توافقها، ثم يحوّل المحوّل مع Gemma إلى `base.bin` و`lora.bin` ويضعهما في `zazo_android_model.zip` داخل مجلد `MyDrive/zazo_brain_lora/android_exports/`.
+
+على الهاتف، نزّل ملف ZIP من Google Drive أو اختره مباشرةً من منتقي الملفات داخل التطبيق عبر **تثبيت حزمة أوزان Android ZIP**. لا تستورد ملف `.safetensors` مباشرة؛ مدير النماذج الحالي يرفضه عمداً لأنه ليس صيغة التشغيل المناسبة. لم تُحذف أو تُستبدل مسارات المحادثة السحابية أو التدريب أو تثبيت حزم النماذج الموجودة.
+
+### تنزيل نماذج MediaPipe مختلفة من Hugging Face داخل التطبيق
+
+تضيف القائمة الجانبية خيار **تنزيل نموذج MediaPipe من Hugging Face**. أدخل معرّف مستودع عام بصيغة `owner/repository`؛ يعرض التطبيق الملفات المنتهية بـ`.task` فقط، ثم ينزّل الملف المختار إلى مساحة التطبيق ويفعّله كنموذج محلي مستقل الاسم. لا يُستبدل ملف النموذج المحلي السابق عند تثبيت ملف آخر؛ يظل نموذج ZIP ذي `base.bin` و`lora.bin` مدعوماً أيضاً.
+
+هذا تنزيل مباشر لملف MediaPipe الجاهز، وليس محوّلاً عاماً لكل ملفات Hugging Face. إذا لم يحتوِ المستودع على `.task`، أو احتوى فقط على `.safetensors` أو `.gguf` أو ملفات Transformers المجزأة، فلن يستطيع التطبيق تشغيله مباشرةً. يلزم تحويله إلى صيغة يدعمها محرك Android قبل تثبيته. تحتاج الملفات الكبيرة اتصالاً مستقراً ومساحة تخزين كافية، ويجب إبقاء التطبيق مفتوحاً حتى اكتمال التنزيل.
