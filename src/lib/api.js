@@ -208,8 +208,11 @@ export async function addMessage(conversationId, role, content, metadata = {}) {
 }
 
 function localAssistantPrompt(messages) {
-  const transcript = messages.map((message) => `${message.role === 'assistant' ? 'المساعد' : 'المستخدم'}: ${message.content}`).join('\n\n')
-  return `${transcript}\n\nالمساعد:`
+  const transcript = messages.map((message) => {
+    const role = message.role === 'assistant' ? 'model' : 'user'
+    return `<start_of_turn>${role}\n${String(message.content || '').trim()}<end_of_turn>`
+  }).join('\n')
+  return `${transcript}\n<start_of_turn>model\n`
 }
 
 async function requestLocalAssistant(messages) {
@@ -226,7 +229,9 @@ async function requestLocalAssistant(messages) {
       delete globalThis[callbackName]
       try {
         const result = JSON.parse(payload)
-        resolve(result.ok && result.text ? { answer: result.text, source: 'local' } : null)
+        resolve(result.ok && result.text
+          ? { content: result.text, metadata: { provider: 'android-local-model' } }
+          : null)
       } catch {
         resolve(null)
       }
