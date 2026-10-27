@@ -1,0 +1,273 @@
+name: Sync Hugging Face LoRA to Cloudflare AI
+
+on:
+  schedule:
+    # GitHub Actions cron uses UTC. This runs once every day at 03:15 UTC.
+    - cron: "15 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sync-huggingface-cloudflare
+  cancel-in-progress: false
+
+env:
+  HF_REPO: zazo300/zazo-gemma-lora
+  HF_REVISION: main
+  HF_CONFIG_FILE: "adapter_config (1).json"
+  HF_WEIGHTS_FILE: "adapter_model (1).safetensors"
+  CF_MODEL: "@cf/google/gemma-2b-it-lora"
+  CF_ACTIVE_KV_KEY: active-lora
+  CF_SOURCE_KV_KEY: huggingface/zazo-gemma-lora/revision
+  CF_KEEP_RECENT: "5"
+
+jobs:
+  sync:
+    name: Check and sync LoRA weights
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Install jq and validate required secrets
+        shell: bash
+        env:
+          CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+          CF_AI_TOKEN: ${{ secrets.CF_AI_TOKEN }}
+          CF_KV_TOKEN: ${{ secrets.CF_KV_TOKEN }}
+          CF_ACTIVE_CONTEXT_KV_NAMESPACE_ID: ${{ secrets.CF_ACTIVE_CONTEXT_KV_NAMESPACE_ID }}
+        run: |
+          set -Eeuo pipefail
+          command -v curl >/dev/null
+          command -v jq >/dev/null
+          for name in CF_ACCOUNT_ID CF_AI_TOKEN CF_KV_TOKEN CF_ACTIVE_CONTEXT_KV_NAMESPACE_ID; do
+            if [[ -z "${!name:-}" ]]; then
+              echo "Missing required repository secret: $name" >&2
+              exit 1
+            fi
+          done
+
+      - name: Check the current Hugging Face revision
+        id: hf
+        shell: bash
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          set -Eeuo pipefail
+          api_url="https://huggingface.co/api/models/${HF_REPO}"
+          headers=(-H "User-Agent: zazo-hf-cloudflare-sync")
+          if [[ -n "${HF_TOKEN:-}" ]]; then
+            headers+=(-H "Authorization: Bearer ${HF_TOKEN}")
+          fi
+
+          response="$(curl --fail-with-body --silent --show-error --retry 3 \
+            "${headers[@]}" "$api_url")"
+          revision="$(jq -r '.sha // empty' <<<"$response")"
+          if [[ -z "$revision" ]]; then
+            echo "Hugging Face API did not return a repository revision." >&2
+            exit 1
+          fi
+
+          echo "revision=$revision" >> "$GITHUB_OUTPUT"
+          echo "Hugging Face revision: $revision"
+
+      - name: Read the last synchronized revision from Cloudflare KV
+        id: state
+        shell: bash
+        env:
+          CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+          CF_KV_TOKEN: ${{ secrets.CF_KV_TOKEN }}
+          CF_ACTIVE_CONTEXT_KV_NAMESPACE_ID: ${{ secrets.CF_ACTIVE_CONTEXT_KV_NAMESPACE_ID }}
+        run: |
+          set -Eeuo pipefail
+          encoded_source_key="$(python3 -c 'import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1], safe=""))' "$CF_SOURCE_KV_KEY")"
+          kv_url="https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT_ID}/storage/kv/namespaces/${CF_ACTIVE_CONTEXT_KV_NAMESPACE_ID}/values/${encoded_source_key}"
+          status="$(curl --silent --show-error --output /tmp/last-revision --write-out '%{http_code}' \
+            --retry 3 -H "Authorization: Bearer ${CF_KV_TOKEN}" "$kv_url")"
+
+          if [[ "$status" == "404" ]]; then
+            last_revision=""
+          elif [[ "$status" == "200" ]]; then
+            last_revision="$(cat /tmp/last-revision)"
+          else
+            echo "Cloudflare KV read failed with HTTP $status:" >&2
+            cat /tmp/last-revision >&2 || true
+            exit 1
+          fi
+
+          echo "last_revision=$last_revision" >> "$GITHUB_OUTPUT"
+          echo "Last synchronized revision: ${last_revision:-<none>}"
+
+      - name: Stop when Hugging Face has no new revision
+        if: steps.hf.outputs.revision == steps.state.outputs.last_revision
+        shell: bash
+        run: echo "No change in Hugging Face; nothing to upload."
+
+      - name: Download and validate the new LoRA files
+        if: steps.hf.outputs.revision != steps.state.outputs.last_revision
+        shell: bash
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          set -Eeuo pipefail
+          mkdir -p /tmp/zazo-lora
+          headers=(-H "User-Agent: zazo-hf-cloudflare-sync")
+          if [[ -n "${HF_TOKEN:-}" ]]; then
+            headers+=(-H "Authorization: Bearer ${HF_TOKEN}")
+          fi
+
+          config_url="https://huggingface.co/${HF_REPO}/resolve/${HF_REVISION}/$(python3 -c 'import urllib.parse,os; print(urllib.parse.quote(os.environ["HF_CONFIG_FILE"]))')"
+          weights_url="https://huggingface.co/${HF_REPO}/resolve/${HF_REVISION}/$(python3 -c 'import urllib.parse,os; print(urllib.parse.quote(os.environ["HF_WEIGHTS_FILE"]))')"
+
+          curl --fail-with-body --silent --show-error --location --retry 3 \
+            "${headers[@]}" "$config_url" -o /tmp/zazo-lora/adapter_config.json
+          curl --fail-with-body --silent --show-error --location --retry 3 \
+            "${headers[@]}" "$weights_url" -o /tmp/zazo-lora/adapter_model.safetensors
+
+          jq empty /tmp/zazo-lora/adapter_config.json
+          base_model="$(jq -r '.base_model_name_or_path // empty' /tmp/zazo-lora/adapter_config.json)"
+          peft_type="$(jq -r '.peft_type // empty' /tmp/zazo-lora/adapter_config.json)"
+          rank="$(jq -r '.r // empty' /tmp/zazo-lora/adapter_config.json)"
+
+          if [[ "$base_model" != "google/gemma-2b-it" ]]; then
+            echo "Unexpected base model: $base_model" >&2
+            exit 1
+          fi
+          if [[ "$peft_type" != "LORA" || "$rank" != "8" ]]; then
+            echo "Unsupported adapter configuration: peft_type=$peft_type, r=$rank" >&2
+            exit 1
+          fi
+
+          size_bytes="$(stat -c '%s' /tmp/zazo-lora/adapter_model.safetensors)"
+          if (( size_bytes < 1 )); then
+            echo "The downloaded adapter weights are empty." >&2
+            exit 1
+          fi
+          # Keep a safety margin below Cloudflare's documented fine-tune asset limit.
+          if (( size_bytes >= 300000000 )); then
+            echo "The adapter is too large for the configured Cloudflare limit: ${size_bytes} bytes" >&2
+            exit 1
+          fi
+
+          echo "Downloaded adapter: $((size_bytes / 1024 / 1024)) MiB"
+          sha256sum /tmp/zazo-lora/adapter_config.json /tmp/zazo-lora/adapter_model.safetensors
+
+      - name: Create a new Cloudflare fine-tune
+        if: steps.hf.outputs.revision != steps.state.outputs.last_revision
+        id: fine_tune
+        shell: bash
+        env:
+          CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+          CF_AI_TOKEN: ${{ secrets.CF_AI_TOKEN }}
+          HF_REVISION_OUTPUT: ${{ steps.hf.outputs.revision }}
+        run: |
+          set -Eeuo pipefail
+          cf_api="https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT_ID}/ai"
+          safe_revision="${HF_REVISION_OUTPUT:0:12}"
+          run_name="zazo-hf-${safe_revision}-$(date -u +%Y%m%d)"
+          description="Zazo LoRA synced from Hugging Face ${HF_REPO}@${HF_REVISION_OUTPUT}"
+
+          payload="$(jq -n \
+            --arg model "$CF_MODEL" \
+            --arg name "$run_name" \
+            --arg description "$description" \
+            '{model:$model,name:$name,description:$description}')"
+
+          response="$(curl --fail-with-body --silent --show-error --retry 3 \
+            -X POST "$cf_api/finetunes" \
+            -H "Authorization: Bearer ${CF_AI_TOKEN}" \
+            -H "Content-Type: application/json" \
+            --data "$payload")"
+          if [[ "$(jq -r '.success // false' <<<"$response")" != "true" ]]; then
+            echo "Cloudflare fine-tune creation failed:" >&2
+            echo "$response" >&2
+            exit 1
+          fi
+
+          fine_tune_id="$(jq -r '.result.id // empty' <<<"$response")"
+          if [[ -z "$fine_tune_id" ]]; then
+            echo "Cloudflare did not return a fine-tune id:" >&2
+            echo "$response" >&2
+            exit 1
+          fi
+
+          echo "id=$fine_tune_id" >> "$GITHUB_OUTPUT"
+          echo "name=$run_name" >> "$GITHUB_OUTPUT"
+          echo "Created fine-tune: $fine_tune_id"
+
+      - name: Upload adapter config and weights to Cloudflare
+        if: steps.hf.outputs.revision != steps.state.outputs.last_revision
+        shell: bash
+        env:
+          CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+          CF_AI_TOKEN: ${{ secrets.CF_AI_TOKEN }}
+          FINE_TUNE_ID: ${{ steps.fine_tune.outputs.id }}
+        run: |
+          set -Eeuo pipefail
+          asset_url="https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT_ID}/ai/finetunes/${FINE_TUNE_ID}/finetune-assets/"
+
+          upload_asset() {
+            local file_name="$1"
+            local file_path="$2"
+            local response
+            response="$(curl --fail-with-body --silent --show-error --retry 2 \
+              -X POST "$asset_url" \
+              -H "Authorization: Bearer ${CF_AI_TOKEN}" \
+              -F "file_name=${file_name}" \
+              -F "file=@${file_path};filename=${file_name};type=application/octet-stream")"
+            if [[ "$(jq -r '.success // false' <<<"$response")" != "true" ]]; then
+              echo "Cloudflare rejected ${file_name}:" >&2
+              echo "$response" >&2
+              exit 1
+            fi
+          }
+
+          upload_asset adapter_model.safetensors /tmp/zazo-lora/adapter_model.safetensors
+          upload_asset adapter_config.json /tmp/zazo-lora/adapter_config.json
+          echo "Both LoRA assets uploaded successfully."
+
+      - name: Activate the new adapter in Cloudflare KV
+        if: steps.hf.outputs.revision != steps.state.outputs.last_revision
+        shell: bash
+        env:
+          CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+          CF_KV_TOKEN: ${{ secrets.CF_KV_TOKEN }}
+          CF_ACTIVE_CONTEXT_KV_NAMESPACE_ID: ${{ secrets.CF_ACTIVE_CONTEXT_KV_NAMESPACE_ID }}
+          FINE_TUNE_ID: ${{ steps.fine_tune.outputs.id }}
+          FINE_TUNE_NAME: ${{ steps.fine_tune.outputs.name }}
+          HF_REVISION_OUTPUT: ${{ steps.hf.outputs.revision }}
+        run: |
+          set -Eeuo pipefail
+          kv_base="https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT_ID}/storage/kv/namespaces/${CF_ACTIVE_CONTEXT_KV_NAMESPACE_ID}/values"
+          now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+          active_pointer="$(jq -n \
+            --arg id "$FINE_TUNE_ID" \
+            --arg name "$FINE_TUNE_NAME" \
+            --arg model "$CF_MODEL" \
+            --arg repo "$HF_REPO" \
+            --arg revision "$HF_REVISION_OUTPUT" \
+            --arg updated "$now" \
+            '{id:$id,name:$name,model:$model,sourceRepo:$repo,sourceRevision:$revision,updatedAt:$updated}')"
+
+          put_kv() {
+            local key="$1"
+            local value="$2"
+            local response
+            response="$(curl --fail-with-body --silent --show-error --retry 3 \
+              -X PUT "$kv_base/$(python3 -c 'import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1], safe=""))' "$key")" \
+              -H "Authorization: Bearer ${CF_KV_TOKEN}" \
+              -H "Content-Type: application/json" \
+              --data "$value")"
+            if [[ "$(jq -r '.success // false' <<<"$response")" != "true" ]]; then
+              echo "Cloudflare KV write failed for ${key}:" >&2
+              echo "$response" >&2
+              exit 1
+            fi
+          }
+
+          # Only activate after both Cloudflare assets were accepted.
+          put_kv "$CF_ACTIVE_KV_KEY" "$active_pointer"
+          put_kv "$CF_SOURCE_KV_KEY" "$HF_REVISION_OUTPUT"
+          echo "Activated fine-tune ${FINE_TUNE_ID} for Hugging Face revision ${HF_REVISION_OUTPUT}."
