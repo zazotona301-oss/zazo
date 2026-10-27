@@ -126,6 +126,10 @@ jobs:
             "${headers[@]}" "$weights_url" -o /tmp/zazo-lora/adapter_model.safetensors
 
           jq empty /tmp/zazo-lora/adapter_config.json
+          # Cloudflare requires model_type=gemma even when the HF adapter config omits it.
+          jq '. + {model_type: (.model_type // "gemma")}' \
+            /tmp/zazo-lora/adapter_config.json > /tmp/zazo-lora/adapter_config.normalized.json
+          mv /tmp/zazo-lora/adapter_config.normalized.json /tmp/zazo-lora/adapter_config.json
           base_model="$(jq -r '.base_model_name_or_path // empty' /tmp/zazo-lora/adapter_config.json)"
           peft_type="$(jq -r '.peft_type // empty' /tmp/zazo-lora/adapter_config.json)"
           rank="$(jq -r '.r // empty' /tmp/zazo-lora/adapter_config.json)"
@@ -174,14 +178,20 @@ jobs:
             --arg description "$description" \
             '{model:$model,name:$name,description:$description}')"
 
-          response="$(curl --fail-with-body --silent --show-error --retry 3 \
+          http_status="$(curl --silent --show-error --retry 3 \
+            --output /tmp/cloudflare-finetune-response.json \
+            --write-out '%{http_code}' \
             -X POST "$cf_api/finetunes" \
             -H "Authorization: Bearer ${CF_AI_TOKEN}" \
             -H "Content-Type: application/json" \
             --data "$payload")"
-          if [[ "$(jq -r '.success // false' <<<"$response")" != "true" ]]; then
-            echo "Cloudflare fine-tune creation failed:" >&2
+          response="$(cat /tmp/cloudflare-finetune-response.json)"
+          if [[ "$http_status" != 2* ]] || [[ "$(jq -r '.success // false' <<<"$response")" != "true" ]]; then
+            echo "Cloudflare fine-tune creation failed (HTTP ${http_status})." >&2
             echo "$response" >&2
+            if [[ "$http_status" == "403" ]]; then
+              echo "Fix CF_AI_TOKEN: create a Cloudflare Workers AI API Token with Workers AI Write/Edit permission for this account." >&2
+            fi
             exit 1
           fi
 
