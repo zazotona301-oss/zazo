@@ -77,23 +77,31 @@ class MainActivity : ComponentActivity() {
         }
 
     private val localModelPickerLauncher: ActivityResultLauncher<Intent> = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
-        val data = result.data ?: return@registerForActivityResult
+        val data = result.data
+        if (data == null) {
+            publishModelTransfer("phone", "cancelled", "لم يتم اختيار ملف")
+            return@registerForActivityResult
+        }
         val selectedUris = buildList {
             data.data?.let(::add)
             data.clipData?.let { clip ->
                 for (index in 0 until clip.itemCount) add(clip.getItemAt(index).uri)
             }
         }.distinct()
-        if (selectedUris.isEmpty()) return@registerForActivityResult
+        if (selectedUris.isEmpty()) {
+            publishModelTransfer("phone", "cancelled", "لم يتم اختيار ملف")
+            return@registerForActivityResult
+        }
+        val selectedNames = selectedUris.map(::displayName)
+        publishModelTransfer("phone", "installing", "جارٍ قراءة الملف أو فك ضغط الحزمة وتثبيت النموذج…", selectedNames.joinToString(", "))
         executor.execute {
             try {
-                val names = selectedUris.map { displayName(it) }
-                if (selectedUris.size == 1 && names.first().endsWith(".zip", ignoreCase = true)) {
+                if (selectedUris.size == 1 && selectedNames.first().endsWith(".zip", ignoreCase = true)) {
                     contentResolver.openInputStream(selectedUris.first())?.use { localModelManager.installModel(it) }
                         ?: error("تعذر فتح ملف ZIP")
-                } else if (selectedUris.size == 1 && names.first().endsWith(".task", ignoreCase = true)) {
+                } else if (selectedUris.size == 1 && selectedNames.first().endsWith(".task", ignoreCase = true)) {
                     contentResolver.openInputStream(selectedUris.first())?.use {
-                        localModelManager.installTaskModel(it, "local-import", names.first())
+                        localModelManager.installTaskModel(it, "local-import", selectedNames.first())
                     } ?: error("تعذر فتح ملف MediaPipe")
                 } else {
                     val files = selectedUris.map { uri ->
@@ -103,12 +111,12 @@ class MainActivity : ComponentActivity() {
                     localModelManager.installFiles(files)
                 }
                 mainHandler.post {
-                    Toast.makeText(this, "تم تثبيت نموذج Zazo المحلي", Toast.LENGTH_LONG).show()
+                    publishModelTransfer("phone", "completed", "تم تثبيت النموذج وتفعيله من ملفات الهاتف", selectedNames.joinToString(", "))
                     webView.evaluateJavascript("window.dispatchEvent(new CustomEvent('zazo-local-model-ready'))", null)
                 }
             } catch (error: Exception) {
                 mainHandler.post {
-                    Toast.makeText(this, "تعذر تثبيت النموذج المحلي: ${error.message}", Toast.LENGTH_LONG).show()
+                    publishModelTransfer("phone", "error", "تعذر تثبيت النموذج: ${error.message ?: "خطأ غير معروف"}", selectedNames.joinToString(", "))
                 }
             }
         }
@@ -119,6 +127,30 @@ class MainActivity : ComponentActivity() {
             if (cursor.moveToFirst()) cursor.getString(0) ?: uri.lastPathSegment.orEmpty()
             else uri.lastPathSegment.orEmpty()
         } ?: uri.lastPathSegment.orEmpty()
+
+    private fun publishModelTransfer(
+        source: String,
+        stage: String,
+        message: String,
+        fileName: String? = null,
+        transferredBytes: Long? = null,
+        totalBytes: Long? = null,
+    ) {
+        val details = JSONObject()
+            .put("source", source)
+            .put("stage", stage)
+            .put("message", message)
+        fileName?.let { details.put("fileName", it) }
+        transferredBytes?.let { details.put("transferredBytes", it) }
+        totalBytes?.takeIf { it > 0L }?.let {
+            details.put("totalBytes", it)
+            transferredBytes?.let { amount -> details.put("percent", ((amount * 100L) / it).toInt().coerceIn(0, 100)) }
+        }
+        val js = "window.dispatchEvent(new CustomEvent('zazo-model-transfer',{detail:JSON.parse(${JSONObject.quote(details.toString())})}))"
+        mainHandler.post {
+            if (::webView.isInitialized) webView.evaluateJavascript(js, null)
+        }
+    }
 
     private val filePickerLauncher: ActivityResultLauncher<Intent> = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         val callback = filePathCallback
@@ -604,7 +636,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun findHuggingFaceTaskModels(repositoryId: String, callbackName: String) {
-        Toast.makeText(this, "جارٍ فحص ملفات المستودع العام…", Toast.LENGTH_SHORT).show()
+        publishModelTransfer("huggingface", "searching", "جارٍ فحص المستودع والبحث عن ملفات MediaPipe .task…", repositoryId)
         executor.execute {
             try {
                 val encodedId = repositoryId.split('/').joinToString("/") { Uri.encode(it) }
@@ -626,19 +658,25 @@ class MainActivity : ComponentActivity() {
                 }
                 mainHandler.post {
                     if (taskFiles.isEmpty()) {
+                        publishModelTransfer("huggingface", "error", "لم أجد ملف .task جاهزاً في $repositoryId. هذا التطبيق لا يشغّل safetensors أو GGUF الخام.")
                         completeHuggingFaceCallback(callbackName, false, "لم أجد ملف .task جاهزاً في $repositoryId. هذا التطبيق لا يشغّل safetensors أو GGUF الخام.")
                         return@post
                     }
+                    publishModelTransfer("huggingface", "choosing", "وُجد ${taskFiles.size} ملفاً متوافقاً. اختر الملف لبدء التنزيل.", repositoryId)
                     AlertDialog.Builder(this)
                         .setTitle("اختر ملف MediaPipe من $repositoryId")
                         .setItems(taskFiles.toTypedArray()) { _, selected ->
                             downloadHuggingFaceTask(repositoryId, taskFiles[selected], callbackName)
                         }
-                        .setNegativeButton("إلغاء") { _, _ -> completeHuggingFaceCallback(callbackName, false, "تم إلغاء التنزيل") }
+                        .setNegativeButton("إلغاء") { _, _ ->
+                            publishModelTransfer("huggingface", "cancelled", "أُلغِي اختيار ملف النموذج.", repositoryId)
+                            completeHuggingFaceCallback(callbackName, false, "تم إلغاء التنزيل")
+                        }
                         .show()
                 }
             } catch (error: Exception) {
                 mainHandler.post {
+                    publishModelTransfer("huggingface", "error", error.message ?: "تعذر فحص مستودع Hugging Face", repositoryId)
                     completeHuggingFaceCallback(callbackName, false, error.message ?: "تعذر فحص مستودع Hugging Face")
                 }
             }
@@ -646,7 +684,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun downloadHuggingFaceTask(repositoryId: String, fileName: String, callbackName: String) {
-        Toast.makeText(this, "بدأ تنزيل $fileName؛ اترك التطبيق مفتوحاً حتى يكتمل", Toast.LENGTH_LONG).show()
+        publishModelTransfer("huggingface", "downloading", "بدأ التنزيل من Hugging Face…", fileName)
         executor.execute {
             var connection: HttpURLConnection? = null
             try {
@@ -661,13 +699,20 @@ class MainActivity : ComponentActivity() {
                 }
                 val status = connection.responseCode
                 if (status !in 200..299) error("تعذر تنزيل النموذج (HTTP $status)")
-                connection.inputStream.use { localModelManager.installTaskModel(it, repositoryId, fileName) }
+                val totalBytes = connection.contentLengthLong.takeIf { it > 0L }
+                connection.inputStream.use { input ->
+                    localModelManager.installTaskModel(input, repositoryId, fileName, totalBytes) { transferred, total ->
+                        publishModelTransfer("huggingface", "downloading", "تنزيل ملف النموذج…", fileName, transferred, total)
+                    }
+                }
                 mainHandler.post {
                     webView.evaluateJavascript("window.dispatchEvent(new CustomEvent('zazo-local-model-ready'))", null)
+                    publishModelTransfer("huggingface", "completed", "اكتمل التنزيل وتم تفعيل النموذج المحلي.", fileName, totalBytes, totalBytes)
                     completeHuggingFaceCallback(callbackName, true, "تم تنزيل النموذج وتفعيله: $repositoryId/$fileName")
                 }
             } catch (error: Exception) {
                 mainHandler.post {
+                    publishModelTransfer("huggingface", "error", error.message ?: "فشل تنزيل النموذج", fileName)
                     completeHuggingFaceCallback(callbackName, false, error.message ?: "فشل تنزيل النموذج")
                 }
             } finally {

@@ -84,7 +84,13 @@ class LocalModelManager(private val context: Context) {
 
     /** Installs a single MediaPipe .task model without imposing a repository-specific name. */
     @Synchronized
-    fun installTaskModel(source: InputStream, repositoryId: String, sourceFileName: String) {
+    fun installTaskModel(
+        source: InputStream,
+        repositoryId: String,
+        sourceFileName: String,
+        totalBytes: Long? = null,
+        onProgress: ((Long, Long?) -> Unit)? = null,
+    ) {
         require(sourceFileName.endsWith(".task", ignoreCase = true)) {
             "يدعم التنزيل المباشر ملفات MediaPipe ذات الامتداد .task فقط؛ حوّل safetensors أو GGUF أولاً"
         }
@@ -95,7 +101,27 @@ class LocalModelManager(private val context: Context) {
         val temporaryFile = File(modelDirectory, ".$installedName.part")
         val installedFile = File(modelDirectory, installedName)
         try {
-            source.use { input -> temporaryFile.outputStream().buffered().use(input::copyTo) }
+            var copiedBytes = 0L
+            var lastPercent = -1
+            var lastReportedBytes = 0L
+            source.use { input ->
+                temporaryFile.outputStream().buffered().use { output ->
+                    val buffer = ByteArray(64 * 1024)
+                    while (true) {
+                        val count = input.read(buffer)
+                        if (count < 0) break
+                        output.write(buffer, 0, count)
+                        copiedBytes += count
+                        val percent = totalBytes?.takeIf { it > 0L }?.let { ((copiedBytes * 100) / it).toInt() }
+                        if ((percent != null && percent != lastPercent) || copiedBytes - lastReportedBytes >= 10L * 1024L * 1024L) {
+                            onProgress?.invoke(copiedBytes, totalBytes)
+                            if (percent != null) lastPercent = percent
+                            lastReportedBytes = copiedBytes
+                        }
+                    }
+                }
+            }
+            onProgress?.invoke(copiedBytes, totalBytes)
             require(temporaryFile.isFile && temporaryFile.length() > MIN_MODEL_BYTES) {
                 "ملف النموذج فارغ أو أصغر من الحجم المتوقع"
             }

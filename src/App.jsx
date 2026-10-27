@@ -22,6 +22,29 @@ import {
   subscribeSyncStatus,
 } from './lib/api'
 
+function formatTransferBytes(value) {
+  if (!Number.isFinite(value) || value < 0) return ''
+  const units = ['B', 'MB', 'GB']
+  let amount = value
+  let unit = 0
+  while (amount >= 1024 && unit < units.length - 1) {
+    amount /= 1024
+    unit += 1
+  }
+  return `${amount.toFixed(unit === 0 ? 0 : 1)} ${units[unit]}`
+}
+
+const transferStageLabels = {
+  selecting: 'اختيار الملف',
+  searching: 'فحص المستودع',
+  choosing: 'اختر ملف النموذج',
+  downloading: 'جارٍ التنزيل',
+  installing: 'جارٍ التثبيت',
+  completed: 'اكتمل النقل والتثبيت',
+  error: 'فشل النقل أو التثبيت',
+  cancelled: 'تم الإلغاء',
+}
+
 export default function App() {
   const [view, setView] = useState('chat')
   const [conversations, setConversations] = useState([])
@@ -29,6 +52,7 @@ export default function App() {
   const [loadingConvos, setLoadingConvos] = useState(true)
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [toast, setToast] = useState(null)
+  const [modelTransfer, setModelTransfer] = useState(null)
   const [syncStatus, setSyncStatus] = useState({ online: navigator.onLine, pending: 0, syncing: false })
   const [localModelAvailable, setLocalModelAvailable] = useState(() => Boolean(globalThis.AndroidZazoLocal?.isAvailable?.()))
 
@@ -39,33 +63,44 @@ export default function App() {
 
   useEffect(() => {
     const refreshLocalModel = () => setLocalModelAvailable(Boolean(globalThis.AndroidZazoLocal?.isAvailable?.()))
+    const updateTransfer = (event) => setModelTransfer(event.detail || null)
     globalThis.addEventListener?.('zazo-local-model-ready', refreshLocalModel)
-    return () => globalThis.removeEventListener?.('zazo-local-model-ready', refreshLocalModel)
+    globalThis.addEventListener?.('zazo-model-transfer', updateTransfer)
+    return () => {
+      globalThis.removeEventListener?.('zazo-local-model-ready', refreshLocalModel)
+      globalThis.removeEventListener?.('zazo-model-transfer', updateTransfer)
+    }
   }, [])
 
   function chooseLocalModel() {
     if (typeof globalThis.AndroidZazoLocal?.chooseModel !== 'function') {
-      setToast({ message: 'تثبيت النموذج المحلي متاح داخل تطبيق Android فقط', isError: true })
+      setModelTransfer({ source: 'phone', stage: 'error', message: 'تثبيت النموذج من الهاتف متاح داخل تطبيق Android فقط.' })
       return
     }
+    setModelTransfer({ source: 'phone', stage: 'selecting', message: 'اختر ملف .task أو ملف ZIP من الهاتف، أو ملفي base.bin وlora.bin.' })
     globalThis.AndroidZazoLocal.chooseModel()
   }
 
   function chooseHuggingFaceModel() {
     const bridge = globalThis.AndroidZazoLocal
     if (typeof bridge?.chooseHuggingFaceModel !== 'function') {
-      showToast('تنزيل النماذج من Hugging Face متاح داخل تطبيق Android فقط', true)
+      setModelTransfer({ source: 'huggingface', stage: 'error', message: 'تنزيل النماذج من Hugging Face متاح داخل تطبيق Android فقط.' })
       return
     }
+    setModelTransfer({ source: 'huggingface', stage: 'selecting', message: 'أدخل معرّف المستودع العام، ثم اختر ملف .task للتنزيل.' })
     const callbackName = `__zazoHfModel_${Date.now()}_${Math.random().toString(36).slice(2)}`
     globalThis[callbackName] = (payload) => {
       delete globalThis[callbackName]
       try {
         const result = JSON.parse(payload)
-        showToast(result.message || (result.ok ? 'تم تثبيت النموذج' : 'تعذر تثبيت النموذج'), !result.ok)
+        setModelTransfer({
+          source: 'huggingface',
+          stage: result.ok ? 'completed' : 'error',
+          message: result.message || (result.ok ? 'تم تثبيت النموذج.' : 'تعذر تثبيت النموذج.'),
+        })
         if (result.ok) setLocalModelAvailable(true)
       } catch {
-        showToast('تعذر قراءة نتيجة تنزيل النموذج', true)
+        setModelTransfer({ source: 'huggingface', stage: 'error', message: 'تعذر قراءة نتيجة تنزيل النموذج.' })
       }
     }
     bridge.chooseHuggingFaceModel(callbackName)
@@ -270,6 +305,37 @@ export default function App() {
         <div className={`toast ${toast.isError ? 'error' : ''}`}>
           {toast.message}
         </div>
+      )}
+
+      {modelTransfer && (
+        <section className={`model-transfer-card ${modelTransfer.stage}`} role="status" aria-live="polite">
+          <div className="model-transfer-heading">
+            <strong>{transferStageLabels[modelTransfer.stage] || 'حالة النموذج'}</strong>
+            <button type="button" aria-label="إغلاق حالة النقل" onClick={() => setModelTransfer(null)}>×</button>
+          </div>
+          <p>{modelTransfer.message}</p>
+          {modelTransfer.fileName && <div className="model-transfer-file">الملف: {modelTransfer.fileName}</div>}
+          {(modelTransfer.stage === 'searching' || modelTransfer.stage === 'downloading' || modelTransfer.stage === 'installing' || modelTransfer.stage === 'selecting') && (
+            <div className="model-transfer-progress" aria-label="تقدم العملية">
+              <div
+                className={typeof modelTransfer.percent === 'number' ? '' : 'indeterminate'}
+                style={typeof modelTransfer.percent === 'number' ? { width: `${modelTransfer.percent}%` } : undefined}
+              />
+            </div>
+          )}
+          {(modelTransfer.stage === 'downloading' || modelTransfer.transferredBytes != null) && (
+            <div className="model-transfer-details">
+              {typeof modelTransfer.percent === 'number' && <span>{modelTransfer.percent}%</span>}
+              {modelTransfer.transferredBytes != null && (
+                <span>
+                  {formatTransferBytes(modelTransfer.transferredBytes)}
+                  {modelTransfer.totalBytes != null ? ` / ${formatTransferBytes(modelTransfer.totalBytes)}` : ' تم تنزيله'}
+                </span>
+              )}
+              <span>{modelTransfer.source === 'huggingface' ? 'من Hugging Face' : 'من الهاتف'}</span>
+            </div>
+          )}
+        </section>
       )}
     </div>
   )
