@@ -8,6 +8,14 @@ https://colab.research.google.com/github/zazotona301-oss/zazo/blob/main/colab/za
 
 أو افتح الملف `zazo_brain_gemma_cloudflare_training.ipynb` من مجلد `colab` وانسخه إلى Google Drive حتى يبقى لديك نسخة شخصية دائمة.
 
+## المسار الموصى به: Hugging Face ثم GitHub Action ثم Cloudflare
+
+لرفع محول LoRA إلى مستودع Hugging Face ثم تشغيل سير المزامنة إلى Cloudflare، افتح الدفتر التالي:
+
+https://colab.research.google.com/github/zazotona301-oss/zazo/blob/main/colab/zazo_train_upload_huggingface.ipynb
+
+يرفع الدفتر `adapter_config (1).json` و`adapter_model (1).safetensors` إلى `zazo300/zazo-gemma-lora`، ثم يستطيع تشغيل `sync-huggingface-cloudflare.yml` تلقائياً. يلزم `HF_TOKEN` بصلاحية كتابة على مستودع Hugging Face، أما `GH_TOKEN` فهو اختياري لتشغيل GitHub Action من داخل الدفتر؛ بدونه يمكن تشغيل الـworkflow يدوياً من GitHub.
+
 ## الأسرار الدائمة
 
 احفظ القيم من لوحة **Colab → Secrets**، وليس في خلايا الدفتر أو داخل Google Drive. فعّل **Notebook access** لكل سر. أسرار Colab محفوظة لحساب Google وتعود عند فتح أي Runtime جديد، لكن الجلسة نفسها مؤقتة وقد تحتاج إلى إعادة `drive.mount`.
