@@ -219,24 +219,32 @@ async function requestLocalAssistant(messages) {
   const bridge = globalThis.AndroidZazoLocal
   if (!bridge || typeof bridge.isAvailable !== 'function' || !bridge.isAvailable()) return null
   const callbackName = `__zazoLocalResponse_${Date.now()}_${Math.random().toString(36).slice(2)}`
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     const timeout = setTimeout(() => {
       delete globalThis[callbackName]
-      resolve(null)
+      reject(new Error('انتهت مهلة تشغيل النموذج المحلي بعد دقيقتين. أعد المحاولة أو اختر نموذجاً أصغر.'))
     }, 120_000)
     globalThis[callbackName] = (payload) => {
       clearTimeout(timeout)
       delete globalThis[callbackName]
       try {
         const result = JSON.parse(payload)
-        resolve(result.ok && result.text
-          ? { content: result.text, metadata: { provider: 'android-local-model' } }
-          : null)
-      } catch {
-        resolve(null)
+        if (!result.ok || !result.text) {
+          reject(new Error(result.error || 'تعذر على النموذج المحلي إنشاء رد.'))
+          return
+        }
+        resolve({ content: result.text, metadata: { provider: 'android-local-model' } })
+      } catch (error) {
+        reject(error instanceof Error ? error : new Error('تعذر قراءة نتيجة النموذج المحلي.'))
       }
     }
-    bridge.ask(localAssistantPrompt(messages), callbackName)
+    try {
+      bridge.ask(localAssistantPrompt(messages), callbackName)
+    } catch (error) {
+      clearTimeout(timeout)
+      delete globalThis[callbackName]
+      reject(error instanceof Error ? error : new Error('تعذر بدء النموذج المحلي.'))
+    }
   })
 }
 
