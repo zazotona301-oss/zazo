@@ -249,8 +249,9 @@ async function requestLocalAssistant(messages) {
 }
 
 export async function requestAssistantResponse({ conversationId, messages }) {
-  const localResult = await requestLocalAssistant(messages)
-  if (localResult) return localResult
+  // Chat replies must come from the backend's Cloudflare Workers AI binding.
+  // The Android local-model bridge remains available for model installation,
+  // but it is intentionally not used as a chat provider here.
   return sendNetwork('/api/chat', {
     method: 'POST',
     body: JSON.stringify({ conversationId, messages }),
