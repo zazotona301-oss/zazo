@@ -186,18 +186,25 @@ jobs:
             -H "Content-Type: application/json" \
             --data "$payload")"
           response="$(cat /tmp/cloudflare-finetune-response.json)"
-          if [[ "$http_status" != 2* ]] || [[ "$(jq -r '.success // false' <<<"$response")" != "true" ]]; then
-            echo "Cloudflare fine-tune creation failed (HTTP ${http_status})." >&2
-            echo "$response" >&2
-            if [[ "$http_status" == "403" ]]; then
-              echo "Fix CF_AI_TOKEN: create a Cloudflare Workers AI API Token with Workers AI Write/Edit permission for this account." >&2
-            fi
-            exit 1
-          fi
-
           fine_tune_id="$(jq -r '.result.id // empty' <<<"$response")"
+          if [[ "$http_status" != 2* ]] || [[ "$(jq -r '.success // false' <<<"$response")" != "true" ]]; then
+            if grep -q 'FINETUNE_EXISTS_ERROR' <<<"$response"; then
+              echo "Fine-tune ${run_name} already exists; looking it up and reusing it."
+              existing="$(curl --fail-with-body --silent --show-error --retry 3 \
+                -H "Authorization: Bearer ${CF_AI_TOKEN}" \
+                "$cf_api/finetunes")"
+              fine_tune_id="$(jq -r --arg name "$run_name" '.result | flatten | .[] | select(.name == $name) | .id' <<<"$existing" | head -n 1)"
+            else
+              echo "Cloudflare fine-tune creation failed (HTTP ${http_status})." >&2
+              echo "$response" >&2
+              if [[ "$http_status" == "403" ]]; then
+                echo "Fix CF_AI_TOKEN: create a Cloudflare Workers AI API Token with Workers AI Write/Edit permission for this account." >&2
+              fi
+              exit 1
+            fi
+          fi
           if [[ -z "$fine_tune_id" ]]; then
-            echo "Cloudflare did not return a fine-tune id:" >&2
+            echo "Cloudflare did not return or expose a fine-tune id:" >&2
             echo "$response" >&2
             exit 1
           fi
