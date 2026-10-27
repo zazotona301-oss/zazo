@@ -220,17 +220,31 @@ jobs:
           upload_asset() {
             local file_name="$1"
             local file_path="$2"
+            local response_file="/tmp/cloudflare-${file_name}.response.json"
+            local http_status
             local response
-            response="$(curl --fail-with-body --silent --show-error --retry 2 \
-              -X POST "$asset_url" \
-              -H "Authorization: Bearer ${CF_AI_TOKEN}" \
-              -F "file_name=${file_name}" \
-              -F "file=@${file_path};filename=${file_name};type=application/octet-stream")"
-            if [[ "$(jq -r '.success // false' <<<"$response")" != "true" ]]; then
-              echo "Cloudflare rejected ${file_name}:" >&2
+            for attempt in $(seq 1 12); do
+              http_status="$(curl --silent --show-error --retry 2 \
+                --output "$response_file" \
+                --write-out '%{http_code}' \
+                -X POST "$asset_url" \
+                -H "Authorization: Bearer ${CF_AI_TOKEN}" \
+                -F "file_name=${file_name}" \
+                -F "file=@${file_path};filename=${file_name};type=application/octet-stream")"
+              response="$(cat "$response_file")"
+              if [[ "$http_status" == 2* ]] && [[ "$(jq -r '.success // false' <<<"$response")" == "true" ]]; then
+                echo "Uploaded ${file_name}."
+                return 0
+              fi
+              if [[ "$http_status" == "404" && "$attempt" -lt 12 ]]; then
+                echo "Cloudflare has not finished provisioning the fine-tune; retrying ${file_name} in 5 seconds (attempt ${attempt}/12)."
+                sleep 5
+                continue
+              fi
+              echo "Cloudflare rejected ${file_name} (HTTP ${http_status}):" >&2
               echo "$response" >&2
               exit 1
-            fi
+            done
           }
 
           upload_asset adapter_model.safetensors /tmp/zazo-lora/adapter_model.safetensors
