@@ -16,6 +16,8 @@ https://colab.research.google.com/github/zazotona301-oss/zazo/blob/main/colab/za
 
 يرفع الدفتر `adapter_config (1).json` و`adapter_model (1).safetensors` إلى `zazo300/zazo-gemma-lora`، ثم يستطيع تشغيل `sync-huggingface-cloudflare.yml` تلقائياً. يلزم `HF_TOKEN` بصلاحية كتابة على مستودع Hugging Face، أما `GH_TOKEN` فهو اختياري لتشغيل GitHub Action من داخل الدفتر؛ بدونه يمكن تشغيل الـworkflow يدوياً من GitHub.
 
+يدعم الدفتر أيضاً رفع ملف `OnlineRetail.xlsx` مباشرة من الهاتف. يحول صفوف المعاملات إلى أمثلة عربية بصيغة `user/assistant`، يستبعد الفواتير الملغاة افتراضياً، ويبدأ بحد 10,000 مثال قابل للتعديل في `MAX_TRAINING_ROWS` حتى يناسب موارد GPU المتاحة.
+
 ## الأسرار الدائمة
 
 احفظ القيم من لوحة **Colab → Secrets**، وليس في خلايا الدفتر أو داخل Google Drive. فعّل **Notebook access** لكل سر. أسرار Colab محفوظة لحساب Google وتعود عند فتح أي Runtime جديد، لكن الجلسة نفسها مؤقتة وقد تحتاج إلى إعادة `drive.mount`.
