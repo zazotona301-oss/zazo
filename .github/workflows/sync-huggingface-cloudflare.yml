@@ -219,10 +219,11 @@ jobs:
         env:
           CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
           CF_AI_TOKEN: ${{ secrets.CF_AI_TOKEN }}
-          FINE_TUNE_ID: ${{ steps.fine_tune.outputs.id }}
+          FINE_TUNE_NAME: ${{ steps.fine_tune.outputs.name }}
         run: |
           set -Eeuo pipefail
-          asset_url="https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT_ID}/ai/finetunes/${FINE_TUNE_ID}/finetune-assets/"
+          encoded_finetune_name="$(python3 -c 'import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1], safe=""))' "$FINE_TUNE_NAME")"
+          asset_url="https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT_ID}/ai/finetunes/${encoded_finetune_name}/finetune-assets/"
 
           upload_asset() {
             local file_name="$1"
