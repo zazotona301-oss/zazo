@@ -223,7 +223,7 @@ jobs:
         run: |
           set -Eeuo pipefail
           encoded_finetune_name="$(python3 -c 'import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1], safe=""))' "$FINE_TUNE_NAME")"
-          asset_url="https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT_ID}/ai/finetunes/${encoded_finetune_name}/finetune-assets/"
+          asset_url="https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT_ID}/ai/finetunes/${encoded_finetune_name}/finetune-assets"
 
           upload_asset() {
             local file_name="$1"
