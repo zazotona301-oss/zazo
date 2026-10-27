@@ -262,6 +262,7 @@ export async function requestAssistantResponse({ conversationId, messages }) {
   const normalizedMessages = messages
     .filter((message) => (message.role === 'user' || message.role === 'assistant') && String(message.content || '').trim())
     .map((message) => ({ role: message.role, content: String(message.content).trim() }))
+    .slice(-40)
   if (!normalizedMessages.length) throw new Error('لا توجد رسالة صالحة لإرسالها إلى الشات')
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(conversationId))) {
     throw new Error('معرّف المحادثة غير صالح. ابدأ محادثة جديدة ثم أعد الإرسال.')
