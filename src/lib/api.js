@@ -57,7 +57,14 @@ async function sendNetwork(path, options = {}) {
   }
   const payload = await response.json().catch(() => ({}))
   if (!response.ok) {
-    const serverMessage = payload.message || payload.error || `Backend request failed (${response.status})`
+    const issueMessage = Array.isArray(payload.issues)
+      ? payload.issues.map((issue) => {
+        const field = Array.isArray(issue.path) && issue.path.length ? issue.path.join('.') : 'الطلب'
+        const reason = Array.isArray(issue.message) ? issue.message.join('، ') : issue.message
+        return `${field}: ${reason || 'قيمة غير صالحة'}`
+      }).join('؛ ')
+      : ''
+    const serverMessage = payload.message || issueMessage || payload.error || `Backend request failed (${response.status})`
     const legacyChatFailure = path === '/api/chat' && (
       /^(?:cloudflare\s+)?workers ai inference failed\.?$/i.test(String(serverMessage).trim()) ||
       (payload.error === 'assistant_failed' && !payload.message)
@@ -252,9 +259,16 @@ export async function requestAssistantResponse({ conversationId, messages }) {
   // Chat replies must come from the backend's Cloudflare Workers AI binding.
   // The Android local-model bridge remains available for model installation,
   // but it is intentionally not used as a chat provider here.
+  const normalizedMessages = messages
+    .filter((message) => (message.role === 'user' || message.role === 'assistant') && String(message.content || '').trim())
+    .map((message) => ({ role: message.role, content: String(message.content).trim() }))
+  if (!normalizedMessages.length) throw new Error('لا توجد رسالة صالحة لإرسالها إلى الشات')
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(conversationId))) {
+    throw new Error('معرّف المحادثة غير صالح. ابدأ محادثة جديدة ثم أعد الإرسال.')
+  }
   return sendNetwork('/api/chat', {
     method: 'POST',
-    body: JSON.stringify({ conversationId, messages }),
+    body: JSON.stringify({ conversationId, messages: normalizedMessages }),
   })
 }
 
