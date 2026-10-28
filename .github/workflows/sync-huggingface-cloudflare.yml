@@ -84,18 +84,18 @@ jobs:
             headers+=(-H "Authorization: Bearer ${HF_TOKEN}")
           fi
           tree="$(curl --fail-with-body --silent --show-error --retry 3 "${headers[@]}" "$tree_url")"
-          version="$(python3 -c 'import json, re, sys; data=json.load(sys.stdin); prefix=sys.argv[1]; nums=set(); pattern=re.compile(r"^"+re.escape(prefix)+r"(\d+)/(?:adapter_config(?: \(1\))?\.json|adapter_model(?: \(1\))?\.safetensors)$"); [nums.add(int(m.group(1))) for item in data if (m:=pattern.match(item.get("path", "")))]; print(f"{prefix}{max(nums)}" if nums else "")' "$HF_VERSION_PREFIX" <<<"$tree")"
+          version="$(python3 -c 'import json, re, sys; data=json.load(sys.stdin); prefix=sys.argv[1]; nums=set(); pattern=re.compile(r"^"+re.escape(prefix)+r"(\d+)_(?:adapter_config|adapter_model)(?: \(1\))?\.(?:json|safetensors)$"); [nums.add(int(m.group(1))) for item in data if (m:=pattern.match(item.get("path", "")))]; print(f"{prefix}{max(nums)}" if nums else "")' "$HF_VERSION_PREFIX" <<<"$tree")"
           if [[ -z "$version" ]]; then
-            echo "No version directory found. Add ${HF_VERSION_PREFIX}1/adapter_config.json and ${HF_VERSION_PREFIX}1/adapter_model.safetensors to Hugging Face." >&2
+            echo "No versioned files found. Add ${HF_VERSION_PREFIX}1_adapter_config.json and ${HF_VERSION_PREFIX}1_adapter_model.safetensors to Hugging Face." >&2
             exit 1
           fi
-          config_path="${version}/adapter_config.json"
-          weights_path="${version}/adapter_model.safetensors"
+          config_path="${version}_adapter_config.json"
+          weights_path="${version}_adapter_model.safetensors"
           if ! jq -e --arg p "$config_path" '[.[].path] | index($p)' <<<"$tree" >/dev/null; then
-            config_path="${version}/adapter_config (1).json"
+            config_path="${version}_adapter_config (1).json"
           fi
           if ! jq -e --arg p "$weights_path" '[.[].path] | index($p)' <<<"$tree" >/dev/null; then
-            weights_path="${version}/adapter_model (1).safetensors"
+            weights_path="${version}_adapter_model (1).safetensors"
           fi
           if ! jq -e --arg c "$config_path" --arg w "$weights_path" '[.[].path] | (index($c) != null and index($w) != null)' <<<"$tree" >/dev/null; then
             echo "Version ${version} must contain both adapter config and safetensors files." >&2
