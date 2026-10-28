@@ -203,8 +203,10 @@ jobs:
             echo "Unexpected base model: $base_model" >&2
             exit 1
           fi
-          if [[ "$peft_type" != "LORA" || "$rank" != "8" ]]; then
-            echo "Unsupported adapter configuration: peft_type=$peft_type, r=$rank" >&2
+          # The v4 adapter uses r=8; v5 uses r=16. Both are supported by
+          # the Cloudflare Gemma LoRA path and must be validated explicitly.
+          if [[ "$peft_type" != "LORA" || ! "$rank" =~ ^(8|16)$ ]]; then
+            echo "Unsupported adapter configuration: peft_type=$peft_type, r=$rank (expected r=8 or r=16)" >&2
             exit 1
           fi
 
