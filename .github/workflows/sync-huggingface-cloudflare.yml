@@ -14,12 +14,12 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  HF_REPO: zazo300/zazo-gemma-lora
+  HF_REPO: zazo301/brain
   HF_REVISION: main
   HF_VERSION_PREFIX: "v"
   CF_MODEL: "@cf/google/gemma-2b-it-lora"
   CF_ACTIVE_KV_KEY: active-lora
-  CF_SOURCE_KV_KEY: huggingface/zazo-gemma-lora/revision
+  CF_SOURCE_KV_KEY: huggingface/zazo301/brain/revision
   CF_KEEP_RECENT: "5"
 
 jobs:
