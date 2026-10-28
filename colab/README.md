@@ -18,6 +18,19 @@ https://colab.research.google.com/github/zazotona301-oss/zazo/blob/main/colab/za
 
 يدعم الدفتر أيضاً رفع ملف `OnlineRetail.xlsx` مباشرة من الهاتف. يحول صفوف المعاملات إلى أمثلة عربية بصيغة `user/assistant`، يستبعد الفواتير الملغاة افتراضياً، ويبدأ بحد 10,000 مثال قابل للتعديل في `MAX_TRAINING_ROWS` حتى يناسب موارد GPU المتاحة.
 
+### إصدارات Hugging Face
+
+يمكن حفظ كل تدريب داخل مجلد مستقل في مستودع Hugging Face، مثلاً:
+
+```text
+v1/adapter_config.json
+v1/adapter_model.safetensors
+v2/adapter_config.json
+v2/adapter_model.safetensors
+```
+
+يبحث GitHub Action تلقائياً عن أعلى إصدار رقمي (`v1` ثم `v2` ثم `v3`) ويستخدمه مع Cloudflare. اترك أسماء الملفات داخل المجلد بدون أرقام؛ وتبقى الإصدارات السابقة محفوظة ولا تُستبدل.
+
 ## الأسرار الدائمة
 
 احفظ القيم من لوحة **Colab → Secrets**، وليس في خلايا الدفتر أو داخل Google Drive. فعّل **Notebook access** لكل سر. أسرار Colab محفوظة لحساب Google وتعود عند فتح أي Runtime جديد، لكن الجلسة نفسها مؤقتة وقد تحتاج إلى إعادة `drive.mount`.

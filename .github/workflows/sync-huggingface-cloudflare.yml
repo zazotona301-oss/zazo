@@ -16,8 +16,7 @@ concurrency:
 env:
   HF_REPO: zazo300/zazo-gemma-lora
   HF_REVISION: main
-  HF_CONFIG_FILE: "adapter_config (1).json"
-  HF_WEIGHTS_FILE: "adapter_model (1).safetensors"
+  HF_VERSION_PREFIX: "v"
   CF_MODEL: "@cf/google/gemma-2b-it-lora"
   CF_ACTIVE_KV_KEY: active-lora
   CF_SOURCE_KV_KEY: huggingface/zazo-gemma-lora/revision
@@ -72,6 +71,43 @@ jobs:
           echo "revision=$revision" >> "$GITHUB_OUTPUT"
           echo "Hugging Face revision: $revision"
 
+      - name: Select the newest version directory
+        id: version
+        shell: bash
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          set -Eeuo pipefail
+          tree_url="https://huggingface.co/api/models/${HF_REPO}/tree/${HF_REVISION}?recursive=true&expand=false"
+          headers=(-H "User-Agent: zazo-hf-cloudflare-sync")
+          if [[ -n "${HF_TOKEN:-}" ]]; then
+            headers+=(-H "Authorization: Bearer ${HF_TOKEN}")
+          fi
+          tree="$(curl --fail-with-body --silent --show-error --retry 3 "${headers[@]}" "$tree_url")"
+          version="$(python3 -c 'import json, re, sys; data=json.load(sys.stdin); prefix=sys.argv[1]; nums=set(); pattern=re.compile(r"^"+re.escape(prefix)+r"(\d+)/(?:adapter_config(?: \(1\))?\.json|adapter_model(?: \(1\))?\.safetensors)$"); [nums.add(int(m.group(1))) for item in data if (m:=pattern.match(item.get("path", "")))]; print(f"{prefix}{max(nums)}" if nums else "")' "$HF_VERSION_PREFIX" <<<"$tree")"
+          if [[ -z "$version" ]]; then
+            echo "No version directory found. Add ${HF_VERSION_PREFIX}1/adapter_config.json and ${HF_VERSION_PREFIX}1/adapter_model.safetensors to Hugging Face." >&2
+            exit 1
+          fi
+          config_path="${version}/adapter_config.json"
+          weights_path="${version}/adapter_model.safetensors"
+          if ! jq -e --arg p "$config_path" '[.[].path] | index($p)' <<<"$tree" >/dev/null; then
+            config_path="${version}/adapter_config (1).json"
+          fi
+          if ! jq -e --arg p "$weights_path" '[.[].path] | index($p)' <<<"$tree" >/dev/null; then
+            weights_path="${version}/adapter_model (1).safetensors"
+          fi
+          if ! jq -e --arg c "$config_path" --arg w "$weights_path" '[.[].path] | (index($c) != null and index($w) != null)' <<<"$tree" >/dev/null; then
+            echo "Version ${version} must contain both adapter config and safetensors files." >&2
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "config_path=$config_path" >> "$GITHUB_OUTPUT"
+          echo "weights_path=$weights_path" >> "$GITHUB_OUTPUT"
+          echo "Selected Hugging Face version: $version"
+          echo "Config: $config_path"
+          echo "Weights: $weights_path"
+
       - name: Read the last synchronized revision from Cloudflare KV
         id: state
         shell: bash
@@ -109,6 +145,8 @@ jobs:
         shell: bash
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          HF_CONFIG_PATH: ${{ steps.version.outputs.config_path }}
+          HF_WEIGHTS_PATH: ${{ steps.version.outputs.weights_path }}
         run: |
           set -Eeuo pipefail
           mkdir -p /tmp/zazo-lora
@@ -117,8 +155,8 @@ jobs:
             headers+=(-H "Authorization: Bearer ${HF_TOKEN}")
           fi
 
-          config_url="https://huggingface.co/${HF_REPO}/resolve/${HF_REVISION}/$(python3 -c 'import urllib.parse,os; print(urllib.parse.quote(os.environ["HF_CONFIG_FILE"]))')"
-          weights_url="https://huggingface.co/${HF_REPO}/resolve/${HF_REVISION}/$(python3 -c 'import urllib.parse,os; print(urllib.parse.quote(os.environ["HF_WEIGHTS_FILE"]))')"
+          config_url="https://huggingface.co/${HF_REPO}/resolve/${HF_REVISION}/$(python3 -c 'import urllib.parse,os; print(urllib.parse.quote(os.environ["HF_CONFIG_PATH"]))')"
+          weights_url="https://huggingface.co/${HF_REPO}/resolve/${HF_REVISION}/$(python3 -c 'import urllib.parse,os; print(urllib.parse.quote(os.environ["HF_WEIGHTS_PATH"]))')"
 
           curl --fail-with-body --silent --show-error --location --retry 3 \
             "${headers[@]}" "$config_url" -o /tmp/zazo-lora/adapter_config.json
@@ -165,12 +203,13 @@ jobs:
           CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
           CF_AI_TOKEN: ${{ secrets.CF_AI_TOKEN }}
           HF_REVISION_OUTPUT: ${{ steps.hf.outputs.revision }}
+          HF_VERSION_OUTPUT: ${{ steps.version.outputs.version }}
         run: |
           set -Eeuo pipefail
           cf_api="https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT_ID}/ai"
           safe_revision="${HF_REVISION_OUTPUT:0:12}"
           run_name="zazo-hf-${safe_revision}-$(date -u +%Y%m%d)"
-          description="Zazo LoRA synced from Hugging Face ${HF_REPO}@${HF_REVISION_OUTPUT}"
+          description="Zazo LoRA ${HF_VERSION_OUTPUT} synced from Hugging Face ${HF_REPO}@${HF_REVISION_OUTPUT}"
 
           payload="$(jq -n \
             --arg model "$CF_MODEL" \
