@@ -20,7 +20,7 @@ https://colab.research.google.com/github/zazotona301-oss/zazo/blob/main/colab/za
 
 ### إصدارات Hugging Face
 
-يمكن حفظ كل تدريب في جذر مستودع Hugging Face بأسماء مسطحة، بدون الحاجة لإنشاء مجلد من الهاتف:
+يمكن حفظ كل تدريب بإحدى الطريقتين؛ الأكشن يدعم مجلدات الإصدارات أو الأسماء المسطحة من الهاتف:
 
 ```text
 v1_adapter_config.json
@@ -29,7 +29,16 @@ v2_adapter_config.json
 v2_adapter_model.safetensors
 ```
 
-يبحث GitHub Action تلقائياً عن أعلى إصدار رقمي (`v1` ثم `v2` ثم `v3`) ويستخدمه مع Cloudflare. ارفع الملفات إلى جذر المستودع؛ وتبقى الإصدارات السابقة محفوظة ولا تُستبدل.
+أو:
+
+```text
+v1/adapter_config.json
+v1/adapter_model.safetensors
+v2/adapter_config.json
+v2/adapter_model.safetensors
+```
+
+يبحث GitHub Action تلقائياً عن أعلى إصدار رقمي (`v1` ثم `v2` ثم `v3`) ويستخدمه مع Cloudflare. إذا كان `v1` داخل مجلد، يستخدمه؛ وإذا كان الاسم مسطحاً، يستخدم الاسم المسطح. وتبقى الإصدارات السابقة محفوظة ولا تُستبدل.
 
 ## الأسرار الدائمة
 
