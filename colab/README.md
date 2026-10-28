@@ -23,10 +23,10 @@ https://colab.research.google.com/github/zazotona301-oss/zazo/blob/main/colab/za
 يمكن حفظ كل تدريب بإحدى الطريقتين؛ الأكشن يدعم مجلدات الإصدارات أو الأسماء المسطحة من الهاتف:
 
 ```text
-v1_adapter_config.json
-v1_adapter_model.safetensors
-v2_adapter_config.json
-v2_adapter_model.safetensors
+v1-adapter_config.json
+v1-adapter_model.safetensors
+v2-adapter_config.json
+v2-adapter_model.safetensors
 ```
 
 أو:
