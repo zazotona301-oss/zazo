@@ -16,7 +16,9 @@ concurrency:
 env:
   HF_REPO: zazo301/brain
   HF_REVISION: main
-  HF_VERSION_PREFIX: "v"
+  # The current Hugging Face release is named v-9-*. Keep the hyphen here so
+  # the selector does not silently fall back to the older v8 adapter.
+  HF_VERSION_PREFIX: "v-"
   CF_MODEL: "@cf/google/gemma-2b-it-lora"
   CF_ACTIVE_KV_KEY: active-lora
   CF_SOURCE_KV_KEY: huggingface/zazo301/brain/revision
