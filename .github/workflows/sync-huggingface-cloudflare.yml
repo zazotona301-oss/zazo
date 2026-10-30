@@ -30,6 +30,7 @@ concurrency:
 env:
   HF_REPO: ${{ inputs.hf_repo || 'zazo301/ibn-khaldun-fully-merged-model' }}
   HF_REVISION: main
+  FORCE_SYNC: ${{ inputs.force_sync }}
   # Supports versioned releases and unversioned adapter files at repository root.
   HF_VERSION_PREFIX: "v-"
   CF_MODEL: "@cf/google/gemma-2b-it-lora"
@@ -227,7 +228,11 @@ jobs:
           set -Eeuo pipefail
           cf_api="https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT_ID}/ai"
           safe_revision="${HF_REVISION_OUTPUT:0:12}"
-          run_name="zazo-hf-${safe_revision}-$(date -u +%Y%m%d)"
+          if [[ "$FORCE_SYNC" == "true" ]]; then
+            run_name="zazo-hf-${safe_revision}-$(date -u +%Y%m%d)-r${GITHUB_RUN_ID}"
+          else
+            run_name="zazo-hf-${safe_revision}-$(date -u +%Y%m%d)"
+          fi
           description="Zazo LoRA ${HF_VERSION_OUTPUT} synced from Hugging Face ${HF_REPO}@${HF_REVISION_OUTPUT}"
 
           payload="$(jq -n \
