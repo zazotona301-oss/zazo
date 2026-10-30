@@ -5,6 +5,20 @@ on:
     # GitHub Actions cron uses UTC. This runs once every day at 03:15 UTC.
     - cron: "15 3 * * *"
   workflow_dispatch:
+    inputs:
+      hf_repo:
+        description: Hugging Face source repository
+        required: true
+        type: choice
+        options:
+          - zazo301/ibn-khaldun-fully-merged-model
+          - zazo301/brain
+        default: zazo301/ibn-khaldun-fully-merged-model
+      force_sync:
+        description: Re-upload and activate even if this revision was synced before
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -14,13 +28,13 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  HF_REPO: zazo301/ibn-khaldun-fully-merged-model
+  HF_REPO: ${{ inputs.hf_repo || 'zazo301/ibn-khaldun-fully-merged-model' }}
   HF_REVISION: main
   # Supports versioned releases and unversioned adapter files at repository root.
   HF_VERSION_PREFIX: "v-"
   CF_MODEL: "@cf/google/gemma-2b-it-lora"
   CF_ACTIVE_KV_KEY: active-lora
-  CF_SOURCE_KV_KEY: huggingface/zazo301/ibn-khaldun-fully-merged-model/revision
+  CF_SOURCE_KV_KEY: huggingface/${{ inputs.hf_repo || 'zazo301/ibn-khaldun-fully-merged-model' }}/revision
   CF_KEEP_RECENT: "5"
 
 jobs:
@@ -139,12 +153,12 @@ jobs:
           echo "Last synchronized revision: ${last_revision:-<none>}"
 
       - name: Stop when Hugging Face has no new revision
-        if: steps.hf.outputs.revision == steps.state.outputs.last_revision
+        if: inputs.force_sync != true && steps.hf.outputs.revision == steps.state.outputs.last_revision
         shell: bash
         run: echo "No change in Hugging Face; nothing to upload."
 
       - name: Download and validate the new LoRA files
-        if: steps.hf.outputs.revision != steps.state.outputs.last_revision
+        if: inputs.force_sync == true || steps.hf.outputs.revision != steps.state.outputs.last_revision
         shell: bash
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
@@ -201,7 +215,7 @@ jobs:
           sha256sum /tmp/zazo-lora/adapter_config.json /tmp/zazo-lora/adapter_model.safetensors
 
       - name: Create a new Cloudflare fine-tune
-        if: steps.hf.outputs.revision != steps.state.outputs.last_revision
+        if: inputs.force_sync == true || steps.hf.outputs.revision != steps.state.outputs.last_revision
         id: fine_tune
         shell: bash
         env:
@@ -258,7 +272,7 @@ jobs:
           echo "Created fine-tune: $fine_tune_id"
 
       - name: Upload adapter config and weights to Cloudflare
-        if: steps.hf.outputs.revision != steps.state.outputs.last_revision
+        if: inputs.force_sync == true || steps.hf.outputs.revision != steps.state.outputs.last_revision
         shell: bash
         env:
           CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
@@ -304,7 +318,7 @@ jobs:
           echo "Both LoRA assets uploaded successfully."
 
       - name: Activate the new adapter in Cloudflare KV
-        if: steps.hf.outputs.revision != steps.state.outputs.last_revision
+        if: inputs.force_sync == true || steps.hf.outputs.revision != steps.state.outputs.last_revision
         shell: bash
         env:
           CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
