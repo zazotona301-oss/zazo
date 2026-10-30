@@ -14,14 +14,13 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  HF_REPO: zazo301/brain
+  HF_REPO: zazo301/ibn-khaldun-fully-merged-model
   HF_REVISION: main
-  # The current Hugging Face release is named v-9-*. Keep the hyphen here so
-  # the selector does not silently fall back to the older v8 adapter.
+  # Supports versioned releases and unversioned adapter files at repository root.
   HF_VERSION_PREFIX: "v-"
   CF_MODEL: "@cf/google/gemma-2b-it-lora"
   CF_ACTIVE_KV_KEY: active-lora
-  CF_SOURCE_KV_KEY: huggingface/zazo301/brain/revision
+  CF_SOURCE_KV_KEY: huggingface/zazo301/ibn-khaldun-fully-merged-model/revision
   CF_KEEP_RECENT: "5"
 
 jobs:
@@ -73,7 +72,7 @@ jobs:
           echo "revision=$revision" >> "$GITHUB_OUTPUT"
           echo "Hugging Face revision: $revision"
 
-      - name: Select the newest version directory
+      - name: Select the newest adapter files
         id: version
         shell: bash
         env:
@@ -87,47 +86,22 @@ jobs:
           fi
           tree="$(curl --fail-with-body --silent --show-error --retry 3 "${headers[@]}" "$tree_url")"
           version="$(python3 -c 'import json, re, sys; data=json.load(sys.stdin); prefix=sys.argv[1]; nums=set(); patterns=[re.compile(r"^"+re.escape(prefix)+r"(\d+)-(?:adapter_config|adapter_model)(?: \(1\))?\.(?:json|safetensors)$"), re.compile(r"^"+re.escape(prefix)+r"(\d+)/(?:adapter_config|adapter_model)(?: \(1\))?\.(?:json|safetensors)$"), re.compile(r"^"+re.escape(prefix)+r"(\d+)_(?:adapter_config|adapter_model)(?: \(1\))?\.(?:json|safetensors)$")]; [nums.add(int(m.group(1))) for item in data for pattern in patterns if (m:=pattern.match(item.get("path", "")))]; print(f"{prefix}{max(nums)}" if nums else "")' "$HF_VERSION_PREFIX" <<<"$tree")"
-          if [[ -z "$version" ]]; then
-            echo "No versioned files found. Add ${HF_VERSION_PREFIX}1_adapter_config.json and ${HF_VERSION_PREFIX}1_adapter_model.safetensors to Hugging Face." >&2
-            exit 1
-          fi
-          config_path="${version}-adapter_config.json"
-          weights_path="${version}-adapter_model.safetensors"
-          if ! jq -e --arg p "$config_path" '[.[].path] | index($p)' <<<"$tree" >/dev/null; then
-            config_path="${version}-adapter_config (1).json"
-          fi
-          if ! jq -e --arg p "$weights_path" '[.[].path] | index($p)' <<<"$tree" >/dev/null; then
-            weights_path="${version}-adapter_model (1).safetensors"
-          fi
-          if jq -e --arg p "$config_path" '[.[].path] | index($p)' <<<"$tree" >/dev/null && jq -e --arg p "$weights_path" '[.[].path] | index($p)' <<<"$tree" >/dev/null; then
-            :
+          if [[ -n "$version" ]]; then
+            config_path="${version}-adapter_config.json"
+            weights_path="${version}-adapter_model.safetensors"
+            if ! jq -e --arg p "$config_path" '[.[].path] | index($p)' <<<"$tree" >/dev/null; then config_path="${version}-adapter_config (1).json"; fi
+            if ! jq -e --arg p "$weights_path" '[.[].path] | index($p)' <<<"$tree" >/dev/null; then weights_path="${version}-adapter_model (1).safetensors"; fi
+            if ! jq -e --arg c "$config_path" --arg w "$weights_path" '[.[].path] | (index($c) != null and index($w) != null)' <<<"$tree" >/dev/null; then
+              config_path="${version}/adapter_config.json"
+              weights_path="${version}/adapter_model.safetensors"
+            fi
           else
-            config_path="${version}/adapter_config.json"
-            weights_path="${version}/adapter_model.safetensors"
-          fi
-          if ! jq -e --arg p "$config_path" '[.[].path] | index($p)' <<<"$tree" >/dev/null; then
-            config_path="${version}/adapter_config (1).json"
-          fi
-          if ! jq -e --arg p "$weights_path" '[.[].path] | index($p)' <<<"$tree" >/dev/null; then
-            weights_path="${version}/adapter_model.safetensors"
-          fi
-          if ! jq -e --arg p "$weights_path" '[.[].path] | index($p)' <<<"$tree" >/dev/null; then
-            weights_path="${version}/adapter_model (1).safetensors"
-          fi
-          if ! jq -e --arg p "$config_path" '[.[].path] | index($p)' <<<"$tree" >/dev/null; then
-            config_path="${version}_adapter_config.json"
-          fi
-          if ! jq -e --arg p "$config_path" '[.[].path] | index($p)' <<<"$tree" >/dev/null; then
-            config_path="${version}_adapter_config (1).json"
-          fi
-          if ! jq -e --arg p "$weights_path" '[.[].path] | index($p)' <<<"$tree" >/dev/null; then
-            weights_path="${version}_adapter_model.safetensors"
-          fi
-          if ! jq -e --arg p "$weights_path" '[.[].path] | index($p)' <<<"$tree" >/dev/null; then
-            weights_path="${version}_adapter_model (1).safetensors"
+            version="latest"
+            config_path="adapter_config.json"
+            weights_path="adapter_model.safetensors"
           fi
           if ! jq -e --arg c "$config_path" --arg w "$weights_path" '[.[].path] | (index($c) != null and index($w) != null)' <<<"$tree" >/dev/null; then
-            echo "Version ${version} must contain both adapter config and safetensors files." >&2
+            echo "${HF_REPO} must contain a matching adapter_config.json and adapter_model.safetensors pair." >&2
             exit 1
           fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
