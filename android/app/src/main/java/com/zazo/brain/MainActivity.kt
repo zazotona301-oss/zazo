@@ -192,16 +192,22 @@ class MainActivity : ComponentActivity() {
                 ): Boolean {
                     filePathCallback?.onReceiveValue(null)
                     filePathCallback = callback
-                    val intent = try {
-                        params?.createIntent() ?: Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
-                            addCategory(Intent.CATEGORY_OPENABLE)
-                            type = "*/*"
-                        }
-                    } catch (_: Exception) {
-                        Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
-                            addCategory(Intent.CATEGORY_OPENABLE)
-                            type = "*/*"
-                        }
+                    // Some Android DocumentsUI providers reject the WebView's
+                    // extension-only MIME (notably .jsonl) and close silently.
+                    // Use a broad document picker with explicit MIME hints so
+                    // JSON/JSONL files remain selectable from phone storage.
+                    val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                        addCategory(Intent.CATEGORY_OPENABLE)
+                        type = "*/*"
+                        putExtra(Intent.EXTRA_ALLOW_MULTIPLE, false)
+                        putExtra(Intent.EXTRA_MIME_TYPES, arrayOf(
+                            "application/json",
+                            "application/x-ndjson",
+                            "text/plain",
+                            "text/csv",
+                            "text/tab-separated-values",
+                            "application/octet-stream",
+                        ))
                     }
                     return try {
                         filePickerLauncher.launch(intent)

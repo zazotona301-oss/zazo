@@ -206,7 +206,13 @@ export default function TrainingView({ onToast, onNavigate }) {
             <small>{selectedFile ? `${(selectedFile.size / (1024 * 1024)).toFixed(2)} MiB · ${records.length} مثالًا مقروءًا` : 'JSON · JSONL · NDJSON · CSV · TSV'}</small>
             <label className="training-file-button">
               {sourceName ? 'اختيار ملف آخر' : 'اختيار ملف'}
-              <input ref={fileRef} type="file" accept={ACCEPTED_FILES} onChange={(event) => handleFile(event.target.files?.[0])} />
+              <input
+                ref={fileRef}
+                type="file"
+                accept={`${ACCEPTED_FILES},application/json,application/x-ndjson,text/csv,text/tab-separated-values,application/octet-stream`}
+                onClick={(event) => { event.currentTarget.value = '' }}
+                onChange={(event) => handleFile(event.target.files?.[0])}
+              />
             </label>
             {(sourceName || parseError) && <button className="training-text-button" type="button" disabled={uploadBusy} onClick={resetUpload}>إزالة الملف</button>}
           </div>
