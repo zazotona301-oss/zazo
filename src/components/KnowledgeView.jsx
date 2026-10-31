@@ -60,14 +60,14 @@ export default function KnowledgeView({ onToast }) {
         const result = await transcribeAudio(file)
         if (!result.text?.trim()) throw new Error('التفريغ الصوتي فارغ')
         setRawSourceText(result.text.trim())
-        setPreview([{ instruction: `محتوى صوتي: ${file.name}`, context: '', response: result.text.trim(), tags: ['audio', 'transcription'], metadata: { ingestion: 'audio_transcription', needs_review: true } }])
+        setPreview([{ id: crypto.randomUUID(), instruction: `محتوى صوتي: ${file.name}`, context: '', response: result.text.trim(), tags: ['audio', 'transcription'], metadata: { ingestion: 'audio_transcription', needs_review: true } }])
         setShowImporter(true)
         onToast('تم تحويل الصوت إلى نص — راجعه قبل الحفظ')
       } else {
         const text = await extractFileText(file)
         setRawSourceText(text)
         const parsed = parseTrainingSource(text, file.name)
-        setPreview(parsed)
+        setPreview(parsed.map((item) => ({ ...item, id: item.id || crypto.randomUUID() })))
         setShowImporter(true)
         onToast(`تم تحليل ${parsed.length} سجل من ${file.name} — راجعها قبل الحفظ`)
       }
@@ -83,6 +83,7 @@ export default function KnowledgeView({ onToast }) {
       const analysis = await analyzeIntellectualText(rawSourceText, { title: sourceName, category: worlds.find((world) => world.id === selectedWorldId)?.name || 'فلسفة ووعي' })
       setAnalysisJson(JSON.stringify(analysis, null, 2))
       const nodes = (analysis.extracted_nodes || []).map((node, index) => ({
+        id: crypto.randomUUID(),
         instruction: node.concept_title || `concept_${String(index + 1).padStart(3, '0')}`,
         context: [node.core_summary, node.key_takeaway].filter(Boolean).join('\n\n'),
         response: node.original_quote || '',

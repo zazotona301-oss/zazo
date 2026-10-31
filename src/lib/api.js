@@ -327,7 +327,7 @@ export async function fetchKnowledgeEntries() {
 }
 
 export async function addKnowledgeEntry(entry) {
-  const id = createLocalId()
+  const id = entry.id || createLocalId()
   const memoryBody = { id, ...toMemory(entry) }
   const optimistic = normalizeMemory({ id, ...memoryBody, created_at: new Date().toISOString(), offline: true })
   const memory = await mutate('/api/memories', 'POST', memoryBody, optimistic, async (result) => {
@@ -339,7 +339,21 @@ export async function addKnowledgeEntry(entry) {
 }
 
 export async function addKnowledgeEntries(entries) {
-  return Promise.all(entries.map((entry) => addKnowledgeEntry(entry)))
+  const saved = []
+  const batchSize = 25
+  for (let start = 0; start < entries.length; start += batchSize) {
+    const batch = entries.slice(start, start + batchSize).map((entry) => ({ id: entry.id || createLocalId(), ...toMemory(entry) }))
+    const result = await sendNetwork('/api/memories/bulk', {
+      method: 'POST',
+      body: JSON.stringify(batch),
+    })
+    const normalized = result.map(normalizeMemory)
+    saved.push(...normalized)
+    const key = '/api/memories?limit=100'
+    const current = await readCache(key).catch(() => []) || []
+    await writeCache(key, [...normalized, ...current.filter((item) => !normalized.some((savedItem) => savedItem.id === item.id))].slice(0, 100))
+  }
+  return saved
 }
 
 export async function deleteKnowledgeEntry(id) {
