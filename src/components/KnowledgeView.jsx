@@ -5,6 +5,7 @@ import { extractFileText } from '../lib/fileExtractor'
 import { parseTrainingSource } from '../lib/dataParser'
 
 const AUDIO_EXTENSIONS = ['mp3', 'wav', 'm4a', 'ogg', 'webm', 'mp4', 'mpeg']
+const KNOWLEDGE_FILE_TYPES = '.pdf,.docx,.epub,.txt,.md,.markdown,.html,.htm,.json,.jsonl,.ndjson,.csv,.tsv,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/epub+zip,text/plain,text/markdown,text/html,application/json,application/jsonl,application/x-ndjson,text/csv,text/tab-separated-values,application/octet-stream'
 
 export default function KnowledgeView({ onToast }) {
   const [entries, setEntries] = useState([])
@@ -117,11 +118,11 @@ export default function KnowledgeView({ onToast }) {
         <option value="">العالم الافتراضي</option>{worlds.map((world) => <option key={world.id} value={world.id}>{world.name}</option>)}
       </select>
       <button className="header-btn" onClick={() => downloadJSONL(entries)}><IconDownload /> تصدير JSONL</button>
-      <label className="header-btn upload-label"><IconUpload /> رفع كتاب / ملف<input id="knowledge-file-input" ref={fileRef} className="native-file-input" type="file" accept=".pdf,.docx,.epub,.txt,.md,.markdown,.html,.htm,.json,.jsonl,.ndjson,.csv,.tsv" onClick={(e) => { e.currentTarget.value = '' }} onChange={(e) => handleFile(e.target.files?.[0])} /></label>
+      <label className="header-btn upload-label"><IconUpload /> رفع كتاب / JSONL / ملف<input id="knowledge-file-input" ref={fileRef} className="native-file-input" type="file" accept={KNOWLEDGE_FILE_TYPES} onClick={(e) => { e.currentTarget.value = '' }} onChange={(e) => handleFile(e.target.files?.[0])} /></label>
       <label className={`header-btn upload-label ${audioBusy ? 'is-disabled' : ''}`} aria-disabled={audioBusy}><IconMic /> {audioBusy ? 'جاري التفريغ...' : 'رفع صوت'}<input id="knowledge-audio-input" ref={audioRef} className="native-file-input" type="file" disabled={audioBusy} accept="audio/*,.mp3,.wav,.m4a,.ogg,.webm,.mp4,.flac" onClick={(e) => { e.currentTarget.value = '' }} onChange={(e) => handleFile(e.target.files?.[0])} /></label>
       <button className="header-btn" style={{ borderColor: 'var(--accent)', color: 'var(--accent)' }} onClick={() => setShowModal(true)}><IconPlus /> إدخال يدوي</button>
     </div></div>
-    <div className="kb-container"><div className="kb-header"><div><p className="analyst-hint">يدعم PDF وDOCX وEPUB وHTML وJSON وCSV وMarkdown وTXT، مع تفريغ الملفات الصوتية إلى نص قبل الحفظ في العالم المختار.</p></div><div className="kb-stats"><div className="kb-stat"><strong>{entries.length}</strong> سجل</div><div className="kb-stat"><strong>{countUniqueTags(entries)}</strong> وسوم</div></div></div>
+    <div className="kb-container"><div className="kb-header"><div><p className="analyst-hint">ارفع من نفس الزر PDF أو DOCX أو EPUB أو HTML أو JSON أو JSONL أو CSV أو Markdown أو TXT، وسيحوّلها المحلل إلى سياقات معرفة قبل حفظها في Neon وKV.</p></div><div className="kb-stats"><div className="kb-stat"><strong>{entries.length}</strong> سجل</div><div className="kb-stat"><strong>{countUniqueTags(entries)}</strong> وسوم</div></div></div>
       {loading ? <div className="kb-empty"><p>جارٍ التحميل...</p></div> : entries.length === 0 ? <div className="kb-empty"><h3>لا توجد مدخلات بعد</h3><p>اكتب فكرة أو ارفع كتاباً أو محتوى صوتياً ليقوم المحلل بتجهيزه.</p></div> : <div className="kb-grid">{entries.map((entry) => <div key={entry.id} className="kb-card">
         <div className="kb-card-field"><span className="kb-card-label">التعليمة / الفكرة</span><span className="kb-card-value">{entry.instruction}</span></div>
         {entry.context && <div className="kb-card-field"><span className="kb-card-label">السياق</span><span className="kb-card-value">{entry.context}</span></div>}
