@@ -6,14 +6,6 @@ on:
     - cron: "15 3 * * *"
   workflow_dispatch:
     inputs:
-      hf_repo:
-        description: Hugging Face source repository
-        required: true
-        type: choice
-        options:
-          - zazo301/ibn-khaldun-fully-merged-model
-          - zazo301/brain
-        default: zazo301/ibn-khaldun-fully-merged-model
       force_sync:
         description: Re-upload and activate even if this revision was synced before
         required: false
@@ -28,14 +20,15 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  HF_REPO: ${{ inputs.hf_repo || 'zazo301/ibn-khaldun-fully-merged-model' }}
+  # This workflow is intentionally pinned to the merged Ibn Khaldun adapter.
+  HF_REPO: zazo301/ibn-khaldun-fully-merged-model
   HF_REVISION: main
   FORCE_SYNC: ${{ inputs.force_sync }}
   # Supports versioned releases and unversioned adapter files at repository root.
   HF_VERSION_PREFIX: "v-"
   CF_MODEL: "@cf/google/gemma-2b-it-lora"
   CF_ACTIVE_KV_KEY: active-lora
-  CF_SOURCE_KV_KEY: huggingface/${{ inputs.hf_repo || 'zazo301/ibn-khaldun-fully-merged-model' }}/revision
+  CF_SOURCE_KV_KEY: huggingface/zazo301/ibn-khaldun-fully-merged-model/revision
   CF_KEEP_RECENT: "5"
 
 jobs:
