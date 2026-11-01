@@ -1,5 +1,16 @@
 const BACKEND_UPLOAD_URL = 'https://zazo-brain-backend.zazotona301.workers.dev/api/admin/knowledge-upload'
 
+export async function onRequestGet({ request }) {
+  const accessJwt = request.headers.get('Cf-Access-Jwt-Assertion')
+  if (!accessJwt) return Response.json({ error: 'access_required' }, { status: 401, headers: { 'Cache-Control': 'no-store' } })
+  const popup = new URL(request.url).searchParams.get('popup') === '1'
+  if (popup) {
+    const html = '<!doctype html><html lang="ar" dir="rtl"><meta charset="utf-8"><title>تم تسجيل الدخول</title><body><p>تم التحقق من تسجيل الدخول. ارجع إلى Zazo لإكمال الرفع.</p><script>window.close()</script></body></html>'
+    return new Response(html, { headers: { 'Cache-Control': 'no-store', 'Content-Type': 'text/html; charset=utf-8' } })
+  }
+  return Response.json({ authenticated: true }, { headers: { 'Cache-Control': 'no-store' } })
+}
+
 export async function onRequestPost({ request }) {
   const accessJwt = request.headers.get('Cf-Access-Jwt-Assertion')
   if (!accessJwt) return Response.json({ error: 'access_required', message: 'سجّل الدخول عبر Cloudflare Access أولاً.' }, { status: 401, headers: { 'Cache-Control': 'no-store' } })

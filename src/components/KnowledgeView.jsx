@@ -133,7 +133,7 @@ export default function KnowledgeView({ onToast }) {
       </select>
       <button className="header-btn" onClick={() => downloadJSONL(entries)}><IconDownload /> تصدير JSONL</button>
       <label className="header-btn upload-label"><IconUpload /> رفع كتاب / JSONL / ملف<input id="knowledge-file-input" ref={fileRef} className="native-file-input" type="file" accept={KNOWLEDGE_FILE_TYPES} onClick={(e) => { e.currentTarget.value = '' }} onChange={(e) => handleFile(e.target.files?.[0])} /></label>
-      {rawSourceText.trim() && <button className="header-btn" onClick={handleUploadToPublicLibrary} disabled={libraryUploadBusy}>{libraryUploadBusy ? 'جارٍ الرفع والفهرسة...' : 'رفع النص إلى مكتبة Hugging Face العامة'}</button>}
+      {rawSourceText.trim() && <button className="header-btn" onClick={handleUploadToPublicLibrary} disabled={libraryUploadBusy}>{libraryUploadBusy ? 'جارٍ تسجيل الدخول والرفع...' : 'رفع النص إلى مكتبة Hugging Face العامة'}</button>}
       <label className={`header-btn upload-label ${audioBusy ? 'is-disabled' : ''}`} aria-disabled={audioBusy}><IconMic /> {audioBusy ? 'جاري التفريغ...' : 'رفع صوت'}<input id="knowledge-audio-input" ref={audioRef} className="native-file-input" type="file" disabled={audioBusy} accept="audio/*,.mp3,.wav,.m4a,.ogg,.webm,.mp4,.flac" onClick={(e) => { e.currentTarget.value = '' }} onChange={(e) => handleFile(e.target.files?.[0])} /></label>
       <button className="header-btn" style={{ borderColor: 'var(--accent)', color: 'var(--accent)' }} onClick={() => setShowModal(true)}><IconPlus /> إدخال يدوي</button>
     </div></div>

@@ -18,10 +18,13 @@ export function getApiBaseUrl() {
   return API_BASE_URL
 }
 
-function getAdminUploadUrl(path) {
+function usesPagesAccessProxy() {
   const hostname = globalThis.location?.hostname || ''
-  const usesPagesAccessProxy = hostname === 'zazo-brain-ui.pages.dev' || hostname.endsWith('.pages.dev')
-  return ADMIN_UPLOAD_PATHS.has(path) && usesPagesAccessProxy ? path : `${API_BASE_URL}${path}`
+  return hostname === 'zazo-brain-ui.pages.dev' || hostname.endsWith('.pages.dev')
+}
+
+function getAdminUploadUrl(path) {
+  return ADMIN_UPLOAD_PATHS.has(path) && usesPagesAccessProxy() ? path : `${API_BASE_URL}${path}`
 }
 
 export function getSyncState() {
@@ -296,7 +299,37 @@ export async function uploadTrainingDataset({ file, uploadId, worldId }) {
   return payload
 }
 
+async function hasCloudflareAccessForKnowledgeUpload() {
+  try {
+    const response = await fetch('/api/admin/knowledge-upload', { method: 'GET', cache: 'no-store', credentials: 'same-origin', headers: { Accept: 'application/json' } })
+    if (!response.ok || !response.headers.get('content-type')?.includes('application/json')) return false
+    const payload = await response.json().catch(() => ({}))
+    return payload.authenticated === true
+  } catch { return false }
+}
+
+async function ensureCloudflareAccessForKnowledgeUpload() {
+  if (!usesPagesAccessProxy()) return
+  const popup = globalThis.open?.('/api/admin/knowledge-upload?popup=1', 'zazo-cloudflare-access', 'popup=yes,width=520,height=680')
+  if (!popup) {
+    if (await hasCloudflareAccessForKnowledgeUpload()) return
+    throw new Error('اسمح بالنوافذ المنبثقة لتسجيل الدخول إلى Cloudflare Access قبل رفع المعرفة.')
+  }
+  const deadline = Date.now() + 120_000
+  try {
+    while (Date.now() < deadline) {
+      if (await hasCloudflareAccessForKnowledgeUpload()) return
+      if (popup.closed) break
+      await new Promise((resolve) => setTimeout(resolve, 1000))
+    }
+  } finally {
+    if (!popup.closed) popup.close()
+  }
+  throw new Error('لم يكتمل تسجيل الدخول إلى Cloudflare Access. سجّل الدخول بحساب zazotona301@gmail.com في النافذة ثم أعد الرفع.')
+}
+
 export async function uploadKnowledgeLibraryText({ text, filename }) {
+  await ensureCloudflareAccessForKnowledgeUpload()
   const formData = new FormData()
   const safeName = String(filename || 'document').replace(/[^\p{L}\p{N}._-]+/gu, '-').slice(0, 100)
   formData.append('file', new File([text], `${safeName || 'document'}.txt`, { type: 'text/plain;charset=utf-8' }))
