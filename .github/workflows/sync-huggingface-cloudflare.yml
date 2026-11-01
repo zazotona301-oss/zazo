@@ -11,6 +11,16 @@ on:
         required: false
         type: boolean
         default: false
+      existing_fine_tune_id:
+        description: Reuse an already-created Cloudflare fine-tune ID (activation-only recovery)
+        required: false
+        type: string
+        default: ""
+      existing_fine_tune_name:
+        description: Name of the already-created Cloudflare fine-tune (activation-only recovery)
+        required: false
+        type: string
+        default: ""
 
 permissions:
   contents: read
@@ -152,7 +162,7 @@ jobs:
         run: echo "No change in Hugging Face; nothing to upload."
 
       - name: Download and validate the new LoRA files
-        if: inputs.force_sync == true || steps.hf.outputs.revision != steps.state.outputs.last_revision
+        if: inputs.existing_fine_tune_id == '' && (inputs.force_sync == true || steps.hf.outputs.revision != steps.state.outputs.last_revision)
         shell: bash
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
@@ -209,7 +219,7 @@ jobs:
           sha256sum /tmp/zazo-lora/adapter_config.json /tmp/zazo-lora/adapter_model.safetensors
 
       - name: Create a new Cloudflare fine-tune
-        if: inputs.force_sync == true || steps.hf.outputs.revision != steps.state.outputs.last_revision
+        if: inputs.existing_fine_tune_id == '' && (inputs.force_sync == true || steps.hf.outputs.revision != steps.state.outputs.last_revision)
         id: fine_tune
         shell: bash
         env:
@@ -270,7 +280,7 @@ jobs:
           echo "Created fine-tune: $fine_tune_id"
 
       - name: Upload adapter config and weights to Cloudflare
-        if: inputs.force_sync == true || steps.hf.outputs.revision != steps.state.outputs.last_revision
+        if: inputs.existing_fine_tune_id == '' && (inputs.force_sync == true || steps.hf.outputs.revision != steps.state.outputs.last_revision)
         shell: bash
         env:
           CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
@@ -316,14 +326,14 @@ jobs:
           echo "Both LoRA assets uploaded successfully."
 
       - name: Activate the new adapter in Cloudflare KV
-        if: inputs.force_sync == true || steps.hf.outputs.revision != steps.state.outputs.last_revision
+        if: inputs.existing_fine_tune_id != '' || inputs.force_sync == true || steps.hf.outputs.revision != steps.state.outputs.last_revision
         shell: bash
         env:
           CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
           CF_KV_TOKEN: ${{ secrets.CF_KV_TOKEN }}
           CF_ACTIVE_CONTEXT_KV_NAMESPACE_ID: ${{ secrets.CF_ACTIVE_CONTEXT_KV_NAMESPACE_ID }}
-          FINE_TUNE_ID: ${{ steps.fine_tune.outputs.id }}
-          FINE_TUNE_NAME: ${{ steps.fine_tune.outputs.name }}
+          FINE_TUNE_ID: ${{ inputs.existing_fine_tune_id || steps.fine_tune.outputs.id }}
+          FINE_TUNE_NAME: ${{ inputs.existing_fine_tune_name || steps.fine_tune.outputs.name }}
           HF_REVISION_OUTPUT: ${{ steps.hf.outputs.revision }}
         run: |
           set -Eeuo pipefail
@@ -343,11 +353,29 @@ jobs:
             local key="$1"
             local value="$2"
             local response
-            response="$(curl --fail-with-body --silent --show-error --retry 3 \
-              -X PUT "$kv_base/$(python3 -c 'import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1], safe=""))' "$key")" \
-              -H "Authorization: Bearer ${CF_KV_TOKEN}" \
-              -H "Content-Type: application/json" \
-              --data "$value")"
+            local encoded_key
+            local status
+            encoded_key="$(python3 -c 'import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1], safe=""))' "$key")"
+            for attempt in $(seq 1 8); do
+              response_file="$(mktemp)"
+              status="$(curl --silent --show-error --output "$response_file" --write-out '%{http_code}' \
+                -X PUT "$kv_base/${encoded_key}" \
+                -H "Authorization: Bearer ${CF_KV_TOKEN}" \
+                -H "Content-Type: application/json" \
+                --data "$value")"
+              response="$(cat "$response_file")"
+              rm -f "$response_file"
+              if [[ "$status" == "2"* ]] && [[ "$(jq -r '.success // false' <<<"$response")" == "true" ]]; then
+                return 0
+              fi
+              if [[ "$status" == "429" && "$attempt" -lt 8 ]]; then
+                delay=$((attempt * 10))
+                echo "Cloudflare KV rate limit for ${key}; retrying in ${delay}s (attempt ${attempt}/8)."
+                sleep "$delay"
+                continue
+              fi
+              break
+            done
             if [[ "$(jq -r '.success // false' <<<"$response")" != "true" ]]; then
               echo "Cloudflare KV write failed for ${key}:" >&2
               echo "$response" >&2
