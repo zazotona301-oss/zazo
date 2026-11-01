@@ -12,7 +12,9 @@ import android.os.Looper
 import android.provider.Settings
 import android.provider.OpenableColumns
 import android.text.InputType
+import android.view.View
 import android.view.ViewGroup
+import android.view.WindowManager
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceError
 import android.webkit.WebResourceResponse
@@ -240,6 +242,8 @@ class MainActivity : ComponentActivity() {
                         settings.allowUniversalAccessFromFileURLs = false
                         settings.setSupportMultipleWindows(false)
                         settings.javaScriptCanOpenWindowsAutomatically = false
+                        isFocusable = true
+                        isFocusableInTouchMode = true
                         webViewClient = object : WebViewClient() {
                             override fun shouldOverrideUrlLoading(
                                 view: WebView?,
@@ -261,10 +265,14 @@ class MainActivity : ComponentActivity() {
                     accessPopupDialog = dialog
                     dialog.setOnDismissListener { closeAccessPopup(popupWebView) }
                     dialog.show()
-                    dialog.window?.setLayout(
-                        (resources.displayMetrics.widthPixels * 0.96f).toInt(),
-                        (resources.displayMetrics.heightPixels * 0.85f).toInt(),
-                    )
+                    dialog.window?.apply {
+                        clearFlags(WindowManager.LayoutParams.FLAG_ALT_FOCUSABLE_IM)
+                        setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
+                        setLayout(
+                            (resources.displayMetrics.widthPixels * 0.96f).toInt(),
+                            (resources.displayMetrics.heightPixels * 0.85f).toInt(),
+                        )
+                    }
 
                     val transport = resultMsg.obj as? WebView.WebViewTransport
                     if (transport == null) {
@@ -273,6 +281,7 @@ class MainActivity : ComponentActivity() {
                     }
                     transport.webView = popupWebView
                     resultMsg.sendToTarget()
+                    popupWebView.post { popupWebView.requestFocusFromTouch() }
                     return true
                 }
 
