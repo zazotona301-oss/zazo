@@ -9,7 +9,7 @@ import {
 } from './offlineStore'
 
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || 'https://zazo-brain-backend.zazotona301.workers.dev').replace(/\/$/, '')
-const ADMIN_UPLOAD_PATHS = new Set(['/api/admin/training-upload', '/api/admin/lora-upload'])
+const ADMIN_UPLOAD_PATHS = new Set(['/api/admin/training-upload', '/api/admin/lora-upload', '/api/admin/knowledge-upload'])
 const syncListeners = new Set()
 let syncRunning = false
 let syncState = { online: globalThis.navigator?.onLine ?? true, pending: 0, syncing: false }
@@ -293,6 +293,24 @@ export async function uploadTrainingDataset({ file, uploadId, worldId }) {
     throw new Error(`${payload.message || payload.error || `فشل رفع الملف (${response.status})`}${rowDetails}`)
   }
   if (!payload.success) throw new Error(payload.message || 'لم يؤكد الخادم نجاح رفع ملف التدريب')
+  return payload
+}
+
+export async function uploadKnowledgeLibraryText({ text, filename }) {
+  const formData = new FormData()
+  const safeName = String(filename || 'document').replace(/[^\p{L}\p{N}._-]+/gu, '-').slice(0, 100)
+  formData.append('file', new File([text], `${safeName || 'document'}.txt`, { type: 'text/plain;charset=utf-8' }))
+  let response
+  try {
+    response = await fetch(getAdminUploadUrl('/api/admin/knowledge-upload'), { method: 'POST', body: formData })
+  } catch (error) {
+    const reason = error instanceof Error && error.message ? error.message : 'خطأ شبكة غير معروف'
+    throw new Error(`تعذر الاتصال بمكتبة المعرفة: ${reason}`)
+  }
+  const isJson = response.headers.get('content-type')?.includes('application/json')
+  const payload = isJson ? await response.json().catch(() => ({})) : {}
+  if (!isJson) throw new Error('لم يكتمل تسجيل الدخول إلى Cloudflare Access. سجّل الدخول ثم أعد المحاولة.')
+  if (!response.ok || !payload.success) throw new Error(payload.message || payload.error || `فشل رفع المعرفة (${response.status})`)
   return payload
 }
 

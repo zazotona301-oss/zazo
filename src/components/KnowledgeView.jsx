@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { IconDownload, IconTrash, IconPlus, IconSave, IconClose, IconUpload, IconMic } from './Icons'
-import { fetchWorlds, fetchKnowledgeEntries, addKnowledgeEntry, addKnowledgeEntries, deleteKnowledgeEntry, downloadJSONL, transcribeAudio, analyzeIntellectualText } from '../lib/api'
+import { fetchWorlds, fetchKnowledgeEntries, addKnowledgeEntry, addKnowledgeEntries, deleteKnowledgeEntry, downloadJSONL, transcribeAudio, analyzeIntellectualText, uploadKnowledgeLibraryText } from '../lib/api'
 import { extractFileText } from '../lib/fileExtractor'
 import { parseTrainingSource } from '../lib/dataParser'
 
@@ -14,6 +14,7 @@ export default function KnowledgeView({ onToast }) {
   const [loading, setLoading] = useState(true)
   const [audioBusy, setAudioBusy] = useState(false)
   const [analysisBusy, setAnalysisBusy] = useState(false)
+  const [libraryUploadBusy, setLibraryUploadBusy] = useState(false)
   const [analysisJson, setAnalysisJson] = useState('')
   const [rawSourceText, setRawSourceText] = useState('')
   const [showModal, setShowModal] = useState(false)
@@ -105,6 +106,18 @@ export default function KnowledgeView({ onToast }) {
     } catch { onToast('فشل حفظ البيانات؛ ستبقى في الطابور المحلي عند انقطاع الاتصال', true) }
   }
 
+  async function handleUploadToPublicLibrary() {
+    if (!rawSourceText.trim()) { onToast('لا يوجد نص مستخرج لرفعه', true); return }
+    const accepted = globalThis.confirm?.(`سيُرفع النص المستخرج من «${sourceName}» إلى المستودع العام zazo301/brain ويستطيع أي شخص رؤيته. هل توافق؟`)
+    if (!accepted) return
+    setLibraryUploadBusy(true)
+    try {
+      const result = await uploadKnowledgeLibraryText({ text: rawSourceText, filename: sourceName })
+      onToast(result.indexedNow ? `تم رفع النص وفهرسته. أصبح عاماً: ${result.url}` : `تم رفع النص إلى Hugging Face؛ ستتم فهرسته في المزامنة. أصبح عاماً: ${result.url}`)
+    } catch (error) { onToast(error.message || 'فشل رفع النص إلى المكتبة العامة', true) }
+    finally { setLibraryUploadBusy(false) }
+  }
+
   async function handleDelete(id) {
     try {
       const result = await deleteKnowledgeEntry(id)
@@ -120,6 +133,7 @@ export default function KnowledgeView({ onToast }) {
       </select>
       <button className="header-btn" onClick={() => downloadJSONL(entries)}><IconDownload /> تصدير JSONL</button>
       <label className="header-btn upload-label"><IconUpload /> رفع كتاب / JSONL / ملف<input id="knowledge-file-input" ref={fileRef} className="native-file-input" type="file" accept={KNOWLEDGE_FILE_TYPES} onClick={(e) => { e.currentTarget.value = '' }} onChange={(e) => handleFile(e.target.files?.[0])} /></label>
+      {rawSourceText.trim() && <button className="header-btn" onClick={handleUploadToPublicLibrary} disabled={libraryUploadBusy}>{libraryUploadBusy ? 'جارٍ الرفع والفهرسة...' : 'رفع النص إلى مكتبة Hugging Face العامة'}</button>}
       <label className={`header-btn upload-label ${audioBusy ? 'is-disabled' : ''}`} aria-disabled={audioBusy}><IconMic /> {audioBusy ? 'جاري التفريغ...' : 'رفع صوت'}<input id="knowledge-audio-input" ref={audioRef} className="native-file-input" type="file" disabled={audioBusy} accept="audio/*,.mp3,.wav,.m4a,.ogg,.webm,.mp4,.flac" onClick={(e) => { e.currentTarget.value = '' }} onChange={(e) => handleFile(e.target.files?.[0])} /></label>
       <button className="header-btn" style={{ borderColor: 'var(--accent)', color: 'var(--accent)' }} onClick={() => setShowModal(true)}><IconPlus /> إدخال يدوي</button>
     </div></div>
