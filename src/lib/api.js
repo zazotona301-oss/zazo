@@ -19,8 +19,18 @@ export function getApiBaseUrl() {
 }
 
 function usesPagesAccessProxy() {
-  const hostname = globalThis.location?.hostname || ''
-  return hostname === 'zazo-brain-ui.pages.dev' || hostname.endsWith('.pages.dev')
+  const location = globalThis.location
+  const hostname = location?.hostname || ''
+  const protocol = location?.protocol || ''
+
+  // Admin uploads must go through the Pages Function so Cloudflare Access can
+  // attach Cf-Access-Jwt-Assertion before the request reaches the backend.
+  // The old check only recognized *.pages.dev, so custom domains silently sent
+  // the multipart request to the Worker directly and browsers reported
+  // "Failed to fetch" when Access rejected it.
+  if (!/^https?:$/.test(protocol)) return false
+  if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '0.0.0.0') return false
+  return hostname !== new URL(API_BASE_URL).hostname
 }
 
 function getAdminUploadUrl(path) {
@@ -283,7 +293,11 @@ export async function uploadTrainingDataset({ file, uploadId, worldId }) {
   if (worldId) formData.append('worldId', worldId)
   let response
   try {
-    response = await fetch(getAdminUploadUrl('/api/admin/training-upload'), { method: 'POST', body: formData })
+    response = await fetch(getAdminUploadUrl('/api/admin/training-upload'), {
+      method: 'POST',
+      body: formData,
+      credentials: 'same-origin',
+    })
   } catch (error) {
     const reason = error instanceof Error && error.message ? error.message : 'خطأ شبكة غير معروف'
     throw new Error(`تعذر الاتصال بخدمة رفع التدريب: ${reason}`)
@@ -335,7 +349,11 @@ export async function uploadKnowledgeLibraryText({ text, filename }) {
   formData.append('file', new File([text], `${safeName || 'document'}.txt`, { type: 'text/plain;charset=utf-8' }))
   let response
   try {
-    response = await fetch(getAdminUploadUrl('/api/admin/knowledge-upload'), { method: 'POST', body: formData })
+    response = await fetch(getAdminUploadUrl('/api/admin/knowledge-upload'), {
+      method: 'POST',
+      body: formData,
+      credentials: 'same-origin',
+    })
   } catch (error) {
     const reason = error instanceof Error && error.message ? error.message : 'خطأ شبكة غير معروف'
     throw new Error(`تعذر الاتصال بمكتبة المعرفة: ${reason}`)
@@ -357,6 +375,7 @@ export async function uploadLoraAdapter({ configFile, weightsFile, fineTuneName 
     response = await fetch(getAdminUploadUrl('/api/admin/lora-upload'), {
       method: 'POST',
       body: formData,
+      credentials: 'same-origin',
     })
   } catch (error) {
     const reason = error instanceof Error && error.message ? error.message : 'خطأ شبكة غير معروف'
