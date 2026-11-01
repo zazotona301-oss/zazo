@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { IconDownload, IconTrash, IconPlus, IconSave, IconClose, IconUpload, IconMic } from './Icons'
-import { fetchWorlds, fetchKnowledgeEntries, addKnowledgeEntry, addKnowledgeEntries, deleteKnowledgeEntry, downloadJSONL, transcribeAudio, analyzeIntellectualText, uploadKnowledgeLibraryText } from '../lib/api'
+import { fetchWorlds, fetchKnowledgeEntries, addKnowledgeEntry, deleteKnowledgeEntry, downloadJSONL, transcribeAudio, analyzeIntellectualText, uploadKnowledgeLibraryText } from '../lib/api'
 import { extractFileText } from '../lib/fileExtractor'
 import { parseTrainingSource } from '../lib/dataParser'
 
@@ -63,14 +63,14 @@ export default function KnowledgeView({ onToast }) {
         setRawSourceText(result.text.trim())
         setPreview([{ id: crypto.randomUUID(), instruction: `محتوى صوتي: ${file.name}`, context: '', response: result.text.trim(), tags: ['audio', 'transcription'], metadata: { ingestion: 'audio_transcription', needs_review: true } }])
         setShowImporter(true)
-        onToast('تم تحويل الصوت إلى نص — راجعه قبل الحفظ')
+        onToast('تم تحويل الصوت إلى نص — راجعه قبل الرفع')
       } else {
         const text = await extractFileText(file)
         setRawSourceText(text)
         const parsed = parseTrainingSource(text, file.name)
         setPreview(parsed.map((item) => ({ ...item, id: item.id || crypto.randomUUID() })))
         setShowImporter(true)
-        onToast(`تم تحليل ${parsed.length} سجل من ${file.name} — راجعها قبل الحفظ`)
+        onToast(`تم تحليل ${parsed.length} سجل من ${file.name} — راجعها قبل الرفع`)
       }
     } catch (error) {
       onToast(error.message || 'تعذر قراءة الملف أو الصيغة غير صحيحة', true)
@@ -92,29 +92,29 @@ export default function KnowledgeView({ onToast }) {
         metadata: { ingestion: 'intellectual_extraction', needs_review: true, cognitive_relevance_score: node.cognitive_relevance_score, node_id: node.node_id },
       }))
       setPreview(nodes)
-      onToast(`استخرج المحلل ${nodes.length} عقد فكرية — راجعها قبل الحفظ`)
+      onToast(`استخرج المحلل ${nodes.length} عقد فكرية — راجعها قبل الرفع`)
     } catch (error) { onToast(error.message || 'فشل التحليل الفكري', true) } finally { setAnalysisBusy(false) }
   }
 
   async function handleImport() {
     if (!preview.length) return
-    try {
-      const saved = await addKnowledgeEntries(preview.map((item) => ({ ...item, worldId: selectedWorldId || undefined, source_name: sourceName })))
-      setEntries((prev) => [...saved, ...prev]); setPreview([]); setShowImporter(false)
-      const missingKvCopies = saved.filter((entry) => entry.kvArchived === false).length
-      onToast(missingKvCopies ? `حُفظ ${saved.length} سجل في Neon؛ تعذرت أرشفة ${missingKvCopies} سجل في KV` : `تم حفظ وأرشفة ${saved.length} سجل في Neon وKV`)
-    } catch { onToast('فشل حفظ البيانات؛ ستبقى في الطابور المحلي عند انقطاع الاتصال', true) }
-  }
-
-  async function handleUploadToPublicLibrary() {
-    if (!rawSourceText.trim()) { onToast('لا يوجد نص مستخرج لرفعه', true); return }
-    const accepted = globalThis.confirm?.(`سيُرفع النص المستخرج من «${sourceName}» إلى المستودع العام zazo301/brain ويستطيع أي شخص رؤيته. هل توافق؟`)
+    const previewText = preview.map((item, index) => [
+      `# ${index + 1}: ${item.instruction || 'بدون عنوان'}`,
+      item.context?.trim() ? `السياق:\n${item.context.trim()}` : '',
+      item.response?.trim() ? `الاستجابة:\n${item.response.trim()}` : '',
+      item.tags?.length ? `الوسوم: ${item.tags.join('، ')}` : '',
+    ].filter(Boolean).join('\n\n')).join('\n\n---\n\n')
+    const text = rawSourceText.trim() || previewText
+    if (!text.trim()) { onToast('لا يوجد نص مستخرج لرفعه', true); return }
+    const accepted = globalThis.confirm?.(`سيُرفع النص المستخرج من «${sourceName || 'الملف'}» بصيغة TXT إلى المستودع العام zazo301/brain، وسيستطيع أي شخص رؤيته. لن يُحفظ هذا الاستيراد في Neon أو KV. هل توافق؟`)
     if (!accepted) return
     setLibraryUploadBusy(true)
     try {
-      const result = await uploadKnowledgeLibraryText({ text: rawSourceText, filename: sourceName })
-      onToast(result.indexedNow ? `تم رفع النص وفهرسته. أصبح عاماً: ${result.url}` : `تم رفع النص إلى Hugging Face؛ ستتم فهرسته في المزامنة. أصبح عاماً: ${result.url}`)
-    } catch (error) { onToast(error.message || 'فشل رفع النص إلى المكتبة العامة', true) }
+      const filename = sourceName.replace(/\.[^.]+$/, '') || 'knowledge'
+      const result = await uploadKnowledgeLibraryText({ text, filename })
+      setPreview([]); setShowImporter(false)
+      onToast(result.indexedNow ? `تم رفع النص إلى Hugging Face وفهرسته في D1. أصبح عاماً: ${result.url}` : `تم رفع النص إلى Hugging Face بنجاح؛ ستفهرسه مزامنة D1 القادمة. أصبح عاماً: ${result.url}`)
+    } catch (error) { onToast(error.message || 'فشل رفع النص إلى Hugging Face', true) }
     finally { setLibraryUploadBusy(false) }
   }
 
@@ -133,11 +133,10 @@ export default function KnowledgeView({ onToast }) {
       </select>
       <button className="header-btn" onClick={() => downloadJSONL(entries)}><IconDownload /> تصدير JSONL</button>
       <label className="header-btn upload-label"><IconUpload /> رفع كتاب / JSONL / ملف<input id="knowledge-file-input" ref={fileRef} className="native-file-input" type="file" accept={KNOWLEDGE_FILE_TYPES} onClick={(e) => { e.currentTarget.value = '' }} onChange={(e) => handleFile(e.target.files?.[0])} /></label>
-      {rawSourceText.trim() && <button className="header-btn" onClick={handleUploadToPublicLibrary} disabled={libraryUploadBusy}>{libraryUploadBusy ? 'جارٍ تسجيل الدخول والرفع...' : 'رفع النص إلى مكتبة Hugging Face العامة'}</button>}
       <label className={`header-btn upload-label ${audioBusy ? 'is-disabled' : ''}`} aria-disabled={audioBusy}><IconMic /> {audioBusy ? 'جاري التفريغ...' : 'رفع صوت'}<input id="knowledge-audio-input" ref={audioRef} className="native-file-input" type="file" disabled={audioBusy} accept="audio/*,.mp3,.wav,.m4a,.ogg,.webm,.mp4,.flac" onClick={(e) => { e.currentTarget.value = '' }} onChange={(e) => handleFile(e.target.files?.[0])} /></label>
       <button className="header-btn" style={{ borderColor: 'var(--accent)', color: 'var(--accent)' }} onClick={() => setShowModal(true)}><IconPlus /> إدخال يدوي</button>
     </div></div>
-    <div className="kb-container"><div className="kb-header"><div><p className="analyst-hint">ارفع من نفس الزر PDF أو DOCX أو EPUB أو HTML أو JSON أو JSONL أو CSV أو Markdown أو TXT، وسيحوّلها المحلل إلى سياقات معرفة قبل حفظها في Neon وKV.</p></div><div className="kb-stats"><div className="kb-stat"><strong>{entries.length}</strong> سجل</div><div className="kb-stat"><strong>{countUniqueTags(entries)}</strong> وسوم</div></div></div>
+    <div className="kb-container"><div className="kb-header"><div><p className="analyst-hint">ارفع PDF أو DOCX أو EPUB أو HTML أو JSON أو JSONL أو CSV أو Markdown أو TXT؛ يُستخرج النص ثم يُرفع كملف TXT إلى مكتبة Hugging Face العامة ويُفهرس في D1، من دون حفظ هذا الاستيراد في Neon أو KV.</p></div><div className="kb-stats"><div className="kb-stat"><strong>{entries.length}</strong> سجل</div><div className="kb-stat"><strong>{countUniqueTags(entries)}</strong> وسوم</div></div></div>
       {loading ? <div className="kb-empty"><p>جارٍ التحميل...</p></div> : entries.length === 0 ? <div className="kb-empty"><h3>لا توجد مدخلات بعد</h3><p>اكتب فكرة أو ارفع كتاباً أو محتوى صوتياً ليقوم المحلل بتجهيزه.</p></div> : <div className="kb-grid">{entries.map((entry) => <div key={entry.id} className="kb-card">
         <div className="kb-card-field"><span className="kb-card-label">التعليمة / الفكرة</span><span className="kb-card-value">{entry.instruction}</span></div>
         {entry.context && <div className="kb-card-field"><span className="kb-card-label">السياق</span><span className="kb-card-value">{entry.context}</span></div>}
@@ -146,7 +145,7 @@ export default function KnowledgeView({ onToast }) {
       </div>)}</div>}
     </div>
 
-    {showImporter && <div className="modal-overlay" onClick={() => setShowImporter(false)}><div className="modal import-modal" onClick={(e) => e.stopPropagation()}><div className="modal-title-row"><h3>معاينة المحلل · {sourceName}</h3><button className="icon-btn" onClick={() => setShowImporter(false)}><IconClose /></button></div><p className="analyst-hint">تم التعرف على {preview.length} سجل داخل العالم المختار. السجلات بدون Response ستُحفظ كأفكار تحتاج مراجعة.</p><div className="analysis-actions"><button className="header-btn" onClick={handleIntellectualAnalysis} disabled={analysisBusy}>{analysisBusy ? 'جارٍ استخراج العقد...' : 'تحليل فكري عميق'}</button></div>{analysisJson && <details className="analysis-json"><summary>عرض JSON الصارم الناتج</summary><pre>{analysisJson}</pre></details>}<div className="import-preview">{preview.slice(0, 20).map((item, index) => <div className="import-row" key={index}><span className="import-index">{index + 1}</span><div><strong>{item.instruction || 'بدون تعليمة'}</strong><small>{item.response || 'بدون استجابة — مراجعة مطلوبة'}</small></div><span className={item.response ? 'ready-dot' : 'review-dot'} /></div>)}</div><div className="modal-actions"><button className="btn-secondary" onClick={() => setShowImporter(false)}>إلغاء</button><button className="btn-primary" onClick={handleImport}><IconSave size={16} /> حفظ {preview.length} سجل</button></div></div></div>}
+    {showImporter && <div className="modal-overlay" onClick={() => !libraryUploadBusy && setShowImporter(false)}><div className="modal import-modal" onClick={(e) => e.stopPropagation()}><div className="modal-title-row"><h3>معاينة المحلل · {sourceName}</h3><button className="icon-btn" onClick={() => !libraryUploadBusy && setShowImporter(false)}><IconClose /></button></div><p className="analyst-hint">تم التعرف على {preview.length} سجل. راجعها قبل الرفع؛ سيُرفع النص المستخرج بصيغة TXT إلى Hugging Face العام بعد تأكيدك، ولن تُحفظ هذه البيانات في Neon أو KV.</p><div className="analysis-actions"><button className="header-btn" onClick={handleIntellectualAnalysis} disabled={analysisBusy || libraryUploadBusy}>{analysisBusy ? 'جارٍ استخراج العقد...' : 'تحليل فكري عميق'}</button></div>{analysisJson && <details className="analysis-json"><summary>عرض JSON الصارم الناتج</summary><pre>{analysisJson}</pre></details>}<div className="import-preview">{preview.slice(0, 20).map((item, index) => <div className="import-row" key={index}><span className="import-index">{index + 1}</span><div><strong>{item.instruction || 'بدون تعليمة'}</strong><small>{item.response || 'بدون استجابة — مراجعة مطلوبة'}</small></div><span className={item.response ? 'ready-dot' : 'review-dot'} /></div>)}</div><div className="modal-actions"><button className="btn-secondary" onClick={() => !libraryUploadBusy && setShowImporter(false)} disabled={libraryUploadBusy}>إلغاء</button><button className="btn-primary" onClick={handleImport} disabled={libraryUploadBusy}><IconUpload size={16} /> {libraryUploadBusy ? 'جارٍ تسجيل الدخول والرفع...' : 'رفع النص إلى Hugging Face'}</button></div></div></div>}
     {showModal && <div className="modal-overlay" onClick={() => setShowModal(false)}><div className="modal" onClick={(e) => e.stopPropagation()}><h3>إدخال فكرة أو عينة تدريب</h3><Field label="الفكرة / Instruction *" value={form.instruction} onChange={(value) => setForm({ ...form, instruction: value })} placeholder="ما الذي تريد تعليمه للنموذج؟" /><Field label="السياق / Context" value={form.context} onChange={(value) => setForm({ ...form, context: value })} placeholder="سياق إضافي اختياري" /><Field label="الإجابة / Response" value={form.response} onChange={(value) => setForm({ ...form, response: value })} placeholder="اتركها فارغة إن كانت فكرة تحتاج مراجعة" /><div className="modal-field"><label>وسوم</label><input value={form.tags} onChange={(e) => setForm({ ...form, tags: e.target.value })} placeholder="book, arabic, audio" /></div><div className="modal-actions"><button className="btn-secondary" onClick={() => setShowModal(false)}>إلغاء</button><button className="btn-primary" onClick={handleAdd}><IconSave size={16} /> حفظ</button></div></div></div>}
   </>
 }
