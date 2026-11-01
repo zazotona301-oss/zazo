@@ -7,6 +7,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
+import android.os.Message
 import android.os.Looper
 import android.provider.Settings
 import android.provider.OpenableColumns
@@ -53,6 +54,8 @@ class MainActivity : ComponentActivity() {
     private var localFallbackLoaded = false
     private var updateCheckStarted = false
     private var filePathCallback: ValueCallback<Array<Uri>>? = null
+    private var accessPopupWebView: WebView? = null
+    private var accessPopupDialog: AlertDialog? = null
     @Volatile
     private var pendingDriveUpload: PendingDriveUpload? = null
 
@@ -181,7 +184,7 @@ class MainActivity : ComponentActivity() {
             settings.allowContentAccess = true
             settings.allowFileAccessFromFileURLs = false
             settings.allowUniversalAccessFromFileURLs = false
-            settings.setSupportMultipleWindows(false)
+            settings.setSupportMultipleWindows(true)
             settings.textZoom = 100
             addJavascriptInterface(LocalModelBridge(), "AndroidZazoLocal")
             webChromeClient = object : WebChromeClient() {
@@ -217,6 +220,64 @@ class MainActivity : ComponentActivity() {
                         filePathCallback = null
                         false
                     }
+                }
+
+                override fun onCreateWindow(
+                    view: WebView?,
+                    isDialog: Boolean,
+                    isUserGesture: Boolean,
+                    resultMsg: Message?,
+                ): Boolean {
+                    if (!isUserGesture || resultMsg == null || accessPopupWebView != null) return false
+
+                    val popupWebView = WebView(this@MainActivity).apply {
+                        settings.javaScriptEnabled = true
+                        settings.domStorageEnabled = true
+                        settings.loadsImagesAutomatically = true
+                        settings.allowFileAccess = false
+                        settings.allowContentAccess = false
+                        settings.allowFileAccessFromFileURLs = false
+                        settings.allowUniversalAccessFromFileURLs = false
+                        settings.setSupportMultipleWindows(false)
+                        settings.javaScriptCanOpenWindowsAutomatically = false
+                        webViewClient = object : WebViewClient() {
+                            override fun shouldOverrideUrlLoading(
+                                view: WebView?,
+                                request: WebResourceRequest,
+                            ): Boolean = !request.url.scheme.equals("https", ignoreCase = true)
+                        }
+                        webChromeClient = object : WebChromeClient() {
+                            override fun onCloseWindow(window: WebView?) {
+                                closeAccessPopup(window)
+                            }
+                        }
+                    }
+                    val dialog = AlertDialog.Builder(this@MainActivity)
+                        .setTitle("تسجيل الدخول إلى Cloudflare Access")
+                        .setView(popupWebView)
+                        .setNegativeButton("إغلاق", null)
+                        .create()
+                    accessPopupWebView = popupWebView
+                    accessPopupDialog = dialog
+                    dialog.setOnDismissListener { closeAccessPopup(popupWebView) }
+                    dialog.show()
+                    dialog.window?.setLayout(
+                        (resources.displayMetrics.widthPixels * 0.96f).toInt(),
+                        (resources.displayMetrics.heightPixels * 0.85f).toInt(),
+                    )
+
+                    val transport = resultMsg.obj as? WebView.WebViewTransport
+                    if (transport == null) {
+                        closeAccessPopup(popupWebView)
+                        return false
+                    }
+                    transport.webView = popupWebView
+                    resultMsg.sendToTarget()
+                    return true
+                }
+
+                override fun onCloseWindow(window: WebView?) {
+                    closeAccessPopup(window)
                 }
             }
             webViewClient = object : WebViewClient() {
@@ -304,6 +365,19 @@ class MainActivity : ComponentActivity() {
         remoteHomeLoadInProgress = false
         localFallbackLoaded = true
         (view ?: webView).loadUrl(LOCAL_UI_URL)
+    }
+
+    private fun closeAccessPopup(window: WebView? = null) {
+        val popupWebView = accessPopupWebView ?: return
+        if (window != null && window !== popupWebView) return
+        accessPopupWebView = null
+        val dialog = accessPopupDialog
+        accessPopupDialog = null
+        dialog?.setOnDismissListener(null)
+        if (dialog?.isShowing == true) dialog.dismiss()
+        popupWebView.stopLoading()
+        popupWebView.destroy()
+        android.webkit.CookieManager.getInstance().flush()
     }
 
     private fun isLocalAssetUri(uri: Uri): Boolean =
@@ -603,6 +677,7 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
+        closeAccessPopup()
         if (::webView.isInitialized) {
             (webView.parent as? ViewGroup)?.removeView(webView)
             webView.stopLoading()
