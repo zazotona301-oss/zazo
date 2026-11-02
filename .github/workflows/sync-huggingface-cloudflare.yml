@@ -54,7 +54,7 @@ jobs:
           CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
           CF_AI_TOKEN: ${{ secrets.CF_AI_TOKEN }}
           CF_KV_TOKEN: ${{ secrets.CF_KV_TOKEN }}
-          CF_ACTIVE_CONTEXT_KV_NAMESPACE_ID: ${{ secrets.CF_ACTIVE_CONTEXT_KV_NAMESPACE_ID }}
+          CF_ACTIVE_CONTEXT_KV_NAMESPACE_ID: 3131f2d053e34dc3b81306822592cf32
         run: |
           set -Eeuo pipefail
           command -v curl >/dev/null
@@ -135,7 +135,7 @@ jobs:
         env:
           CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
           CF_KV_TOKEN: ${{ secrets.CF_KV_TOKEN }}
-          CF_ACTIVE_CONTEXT_KV_NAMESPACE_ID: ${{ secrets.CF_ACTIVE_CONTEXT_KV_NAMESPACE_ID }}
+          CF_ACTIVE_CONTEXT_KV_NAMESPACE_ID: 3131f2d053e34dc3b81306822592cf32
         run: |
           set -Eeuo pipefail
           encoded_source_key="$(python3 -c 'import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1], safe=""))' "$CF_SOURCE_KV_KEY")"
@@ -331,7 +331,7 @@ jobs:
         env:
           CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
           CF_KV_TOKEN: ${{ secrets.CF_KV_TOKEN }}
-          CF_ACTIVE_CONTEXT_KV_NAMESPACE_ID: ${{ secrets.CF_ACTIVE_CONTEXT_KV_NAMESPACE_ID }}
+          CF_ACTIVE_CONTEXT_KV_NAMESPACE_ID: 3131f2d053e34dc3b81306822592cf32
           FINE_TUNE_ID: ${{ inputs.existing_fine_tune_id || steps.fine_tune.outputs.id }}
           FINE_TUNE_NAME: ${{ inputs.existing_fine_tune_name || steps.fine_tune.outputs.name }}
           HF_REVISION_OUTPUT: ${{ steps.hf.outputs.revision }}
