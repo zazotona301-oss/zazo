@@ -2,6 +2,42 @@ import { useState, useEffect, useRef } from 'react'
 import { IconSend, IconMic } from './Icons'
 import { fetchMessages, addMessage, renameConversation, requestAssistantResponse } from '../lib/api'
 
+function KnowledgeSources({ sources }) {
+  const visibleSources = (Array.isArray(sources) ? sources : []).filter((source) => {
+    if (typeof source?.url !== 'string') return false
+    try {
+      const url = new URL(source.url)
+      return url.protocol === 'https:' && url.hostname === 'huggingface.co'
+    } catch {
+      return false
+    }
+  })
+
+  if (!visibleSources.length) return null
+
+  return (
+    <section className="message-sources" aria-label="مصادر المعرفة على Hugging Face">
+      <div className="message-sources-title">مصادر Hugging Face المستخدمة</div>
+      <ul className="message-source-list">
+        {visibleSources.map((source, index) => {
+          const citation = source.citation || `K${index + 1}`
+          const location = source.pageReference
+            ? `الصفحة ${source.pageReference}`
+            : Number.isFinite(Number(source.chunk)) ? `المقطع ${source.chunk}` : 'فتح المصدر'
+          return (
+            <li key={`${citation}-${source.url}`}>
+              <a className="message-source-link" href={source.url} target="_blank" rel="noopener noreferrer" dir="rtl">
+                <span className="message-source-name">[{citation}] {source.title || 'ملف من مكتبة Zazo'}</span>
+                <span className="message-source-location">{location} · فتح الملف على Hugging Face</span>
+              </a>
+            </li>
+          )
+        })}
+      </ul>
+    </section>
+  )
+}
+
 export default function ChatView({ conversation, onToast, onConversationCreated }) {
   const [messages, setMessages] = useState([])
   const [input, setInput] = useState('')
@@ -122,7 +158,16 @@ export default function ChatView({ conversation, onToast, onConversationCreated 
         {editingTitle ? <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flex: 1 }}><input className="chat-input" style={{ flex: 1, minHeight: '40px', padding: '8px 12px' }} value={title} onChange={(e) => setTitle(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSaveTitle()} autoFocus /><button className="btn-primary" onClick={handleSaveTitle}>حفظ</button><button className="btn-secondary" onClick={() => setEditingTitle(false)}>إلغاء</button></div> : <h2 style={{ cursor: conversation ? 'pointer' : 'default' }} onClick={() => { if (conversation) { setTitle(conversation.title); setEditingTitle(true) } }}>{conversation?.title || 'محادثة جديدة'}</h2>}
       </div>
       <div className="chat-container">
-        {loading ? <div className="empty-chat"><p>جارٍ التحميل...</p></div> : messages.length === 0 ? <div className="empty-chat"><img className="empty-avatar" src="/assets/zazo-avatar.webp" alt="وجه Zazo" /><h3>أهلاً بك في وعي Zazo</h3><p>اكتب فكرتك أو اضغط زر الميكروفون للتحدث.</p></div> : messages.map((msg) => <div key={msg.id} className={`message ${msg.role}`}><div className="message-role">{msg.role === 'user' ? 'أنت' : 'Zazo'}</div>{msg.content}{msg.role === 'assistant' && msg.metadata?.provider === 'android-local-model' && <div className="message-provider">النموذج المحلي على الجهاز</div>}{msg.role === 'assistant' && msg.metadata?.provider === 'cloudflare-workers-ai' && <div className="message-provider">Cloudflare Workers AI · Zazo Brain</div>}{msg.role === 'assistant' && Array.isArray(msg.metadata?.knowledgeSources) && msg.metadata.knowledgeSources.length > 0 && <div className="message-provider">المصادر: {msg.metadata.knowledgeSources.map((source, index) => <span key={source.citation}><a href={source.url} target="_blank" rel="noreferrer">[{source.citation}] {source.title} · مقطع {source.chunk}</a>{index < msg.metadata.knowledgeSources.length - 1 ? '، ' : ''}</span>)}</div>}</div>)}
+        {loading ? <div className="empty-chat"><p>جارٍ التحميل...</p></div> : messages.length === 0 ? <div className="empty-chat"><img className="empty-avatar" src="/assets/zazo-avatar.webp" alt="وجه Zazo" /><h3>أهلاً بك في وعي Zazo</h3><p>اكتب فكرتك أو اضغط زر الميكروفون للتحدث.</p></div> : messages.map((msg) => (
+          <div key={msg.id} className={`message ${msg.role}`}>
+            <div className="message-role">{msg.role === 'user' ? 'أنت' : 'Zazo'}</div>
+            <div className="message-content">{msg.content}</div>
+            {msg.role === 'assistant' && msg.metadata?.provider === 'android-local-model' && <div className="message-provider">النموذج المحلي على الجهاز</div>}
+            {msg.role === 'assistant' && msg.metadata?.replyFallback && <div className="message-provider">إجابة احتياطية من مقتطفات Hugging Face</div>}
+            {msg.role === 'assistant' && msg.metadata?.provider === 'cloudflare-workers-ai' && !msg.metadata?.replyFallback && <div className="message-provider">Cloudflare Workers AI · Zazo Brain</div>}
+            {msg.role === 'assistant' && <KnowledgeSources sources={msg.metadata?.knowledgeSources} />}
+          </div>
+        ))}
         {sending && <div className="typing-indicator">Zazo يفكر...</div>}
         <div ref={messagesEndRef} />
       </div>

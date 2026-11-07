@@ -426,6 +426,55 @@ body {
   opacity: 0.8;
 }
 
+.message-sources {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border-light);
+}
+
+.message-sources-title {
+  margin-bottom: 7px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.message-source-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  list-style: none;
+}
+
+.message-source-link {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 7px 9px;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-sm);
+  background: rgba(10, 14, 26, 0.38);
+  color: var(--accent);
+  font-size: 12px;
+  line-height: 1.5;
+  text-decoration: none;
+  overflow-wrap: anywhere;
+}
+
+.message-source-link:hover {
+  border-color: var(--accent-dim);
+  background: var(--bg-hover);
+}
+
+.message-source-name {
+  font-weight: 600;
+}
+
+.message-source-location {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
 .empty-chat {
   flex: 1;
   display: flex;
