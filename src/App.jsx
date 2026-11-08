@@ -84,10 +84,10 @@ export default function App() {
   function chooseHuggingFaceModel() {
     const bridge = globalThis.AndroidZazoLocal
     if (typeof bridge?.chooseHuggingFaceModel !== 'function') {
-      setModelTransfer({ source: 'huggingface', stage: 'error', message: 'تنزيل النماذج من Hugging Face متاح داخل تطبيق Android فقط.' })
+      setModelTransfer({ source: 'huggingface', stage: 'error', message: 'تنزيل النموذج متاح داخل تطبيق Android فقط.' })
       return
     }
-    setModelTransfer({ source: 'huggingface', stage: 'selecting', message: 'أدخل معرّف المستودع العام، ثم اختر ملف .task للتنزيل.' })
+    setModelTransfer({ source: 'huggingface', stage: 'selecting', message: 'أدخل معرّف مصدر النموذج العام، ثم اختر ملف .task للتنزيل.' })
     const callbackName = `__zazoHfModel_${Date.now()}_${Math.random().toString(36).slice(2)}`
     globalThis[callbackName] = (payload) => {
       delete globalThis[callbackName]
@@ -230,7 +230,7 @@ export default function App() {
             <IconCpu /> {localModelAvailable ? 'حزمة النموذج المحلي مثبتة' : 'تثبيت حزمة أوزان Android ZIP'}
           </button>
           <button className="nav-item" type="button" onClick={chooseHuggingFaceModel}>
-            <IconCpu /> تنزيل نموذج MediaPipe من Hugging Face
+            <IconCpu /> تنزيل نموذج MediaPipe
           </button>
         </nav>
 
@@ -332,7 +332,7 @@ export default function App() {
                   {modelTransfer.totalBytes != null ? ` / ${formatTransferBytes(modelTransfer.totalBytes)}` : ' تم تنزيله'}
                 </span>
               )}
-              <span>{modelTransfer.source === 'huggingface' ? 'من Hugging Face' : 'من الهاتف'}</span>
+              <span>{modelTransfer.source === 'huggingface' ? 'من مصدر النموذج' : 'من الهاتف'}</span>
             </div>
           )}
         </section>

@@ -3,33 +3,25 @@ import { IconSend, IconMic } from './Icons'
 import { fetchMessages, addMessage, renameConversation, requestAssistantResponse } from '../lib/api'
 
 function KnowledgeSources({ sources }) {
-  const visibleSources = (Array.isArray(sources) ? sources : []).filter((source) => {
-    if (typeof source?.url !== 'string') return false
-    try {
-      const url = new URL(source.url)
-      return url.protocol === 'https:' && url.hostname === 'huggingface.co'
-    } catch {
-      return false
-    }
-  })
+  const visibleSources = (Array.isArray(sources) ? sources : []).filter((source) => typeof source?.title === 'string')
 
   if (!visibleSources.length) return null
 
   return (
-    <section className="message-sources" aria-label="مصادر المعرفة على Hugging Face">
-      <div className="message-sources-title">مصادر Hugging Face المستخدمة</div>
+    <section className="message-sources" aria-label="مراجع الكتاب المستخدمة">
+      <div className="message-sources-title">مراجع الكتاب</div>
       <ul className="message-source-list">
         {visibleSources.map((source, index) => {
           const citation = source.citation || `K${index + 1}`
           const location = source.pageReference
             ? `الصفحة ${source.pageReference}`
-            : Number.isFinite(Number(source.chunk)) ? `المقطع ${source.chunk}` : 'فتح المصدر'
+            : Number.isFinite(Number(source.chunk)) ? `المقطع ${source.chunk}` : 'مرجع من الكتاب'
           return (
-            <li key={`${citation}-${source.url}`}>
-              <a className="message-source-link" href={source.url} target="_blank" rel="noopener noreferrer" dir="rtl">
-                <span className="message-source-name">[{citation}] {source.title || 'ملف من مكتبة Zazo'}</span>
-                <span className="message-source-location">{location} · فتح الملف على Hugging Face</span>
-              </a>
+            <li key={`${citation}-${source.title}-${source.chunk}`}>
+              <div className="message-source-link" dir="rtl">
+                <span className="message-source-name">[{citation}] {source.title}</span>
+                <span className="message-source-location">{location}</span>
+              </div>
             </li>
           )
         })}
@@ -163,8 +155,7 @@ export default function ChatView({ conversation, onToast, onConversationCreated 
             <div className="message-role">{msg.role === 'user' ? 'أنت' : 'Zazo'}</div>
             <div className="message-content">{msg.content}</div>
             {msg.role === 'assistant' && msg.metadata?.provider === 'android-local-model' && <div className="message-provider">النموذج المحلي على الجهاز</div>}
-            {msg.role === 'assistant' && msg.metadata?.replyFallback && <div className="message-provider">إجابة احتياطية من مقتطفات Hugging Face</div>}
-            {msg.role === 'assistant' && msg.metadata?.provider === 'cloudflare-workers-ai' && !msg.metadata?.replyFallback && <div className="message-provider">Cloudflare Workers AI · Zazo Brain</div>}
+            {msg.role === 'assistant' && msg.metadata?.provider === 'cloudflare-workers-ai' && <div className="message-provider">Zazo Brain</div>}
             {msg.role === 'assistant' && <KnowledgeSources sources={msg.metadata?.knowledgeSources} />}
           </div>
         ))}
